@@ -880,6 +880,9 @@ def main():
                                 # Vaporize snake's own tail (tail cutter!)
                                 if target_cell in snake.body:
                                     idx = snake.body.index(target_cell)
+                                    # Don't cut the head or reduce snake below 2 segments
+                                    if idx == 0 or len(snake.body) - 1 <= 2:
+                                        break
                                     # Vaporize from index down to tail
                                     cut_count = len(snake.body) - idx
                                     for tail_idx in range(len(snake.body) - 1, idx - 1, -1):
@@ -1149,6 +1152,10 @@ def main():
                             if new_food_pos not in snake.body and new_food_pos not in obstacles:
                                 food.position = new_food_pos
 
+                    # Ensure food is not on snake (can happen after shrink/teleport tail changes)
+                    if food.position in snake.body:
+                        food = Food(snake.body)
+
                     eating = (next_head == food.position)
                     collecting = spawned_powerup and (next_head == spawned_powerup.position)
                     
@@ -1210,6 +1217,9 @@ def main():
                             cut_diff = len(snake.body) - cut_len
                             while len(snake.body) > cut_len:
                                 snake.body.pop()
+                            # Re-validate food position after shrink
+                            if food.position in snake.body:
+                                food = Food(snake.body)
                             floating_texts.append(FloatingText(f"SHRINK -{cut_diff}", px, py - 25, COLOR_SHRINK))
                         elif power_type == PowerUp.TYPE_LASER:
                             play_synth_sound(600, 200, 'saw')
@@ -1260,7 +1270,17 @@ def main():
                             play_synth_sound(900, 150, 'sine')
                             play_synth_sound(300, 200, 'sine')
                             particles.spawn_explosion(px, py, COLOR_TELEPORT, 30)
-                            snake.body = [(random.randint(2, COLS - 3), random.randint(2, ROWS - 3))]
+                            # Find a safe teleport destination
+                            moving_positions = [mo['pos'] for mo in move_obstacles]
+                            safe_pos = None
+                            for _ in range(100):
+                                candidate = (random.randint(3, COLS - 4), random.randint(3, ROWS - 4))
+                                if candidate not in snake.body and candidate not in obstacles and candidate not in moving_positions:
+                                    safe_pos = candidate
+                                    break
+                            if safe_pos is None:
+                                safe_pos = snake.body[0]  # Stay in place if no safe spot found
+                            snake.body = [safe_pos]
                             snake.prev_body = list(snake.body)
                             snake.direction = random.choice([(0, -1), (0, 1), (-1, 0), (1, 0)])
                             floating_texts.append(FloatingText("TELEPORT!", px, py - 25, COLOR_TELEPORT))
@@ -1511,15 +1531,6 @@ def main():
                 ("BACKSPACE", "Rewind time (on crash)", COLOR_REWIND),
                 ("H", "Help / Power-up guide", COLOR_GHOST),
             ]
-            ctrl_x = V_WIDTH // 2 - 350
-            for key, desc, color in controls:
-                k = font_ctrl.render(key, True, FOOD_COLOR)
-                d = font_ctrl.render(desc, True, (180, 180, 190))
-                virtual_surface.blit(k, (ctrl_x, 540))
-                virtual_surface.blit(d, (ctrl_x + k.get_width() + 20, 540))
-                ctrl_x = max(ctrl_x, V_WIDTH // 2 - 350)
-                # Just stack vertically for clarity
-            # Redo controls vertically
             cy = 540
             for key, desc, color in controls:
                 k = font_ctrl.render(key, True, FOOD_COLOR)
@@ -1531,14 +1542,14 @@ def main():
                 cy += 38
 
             # Power-up legend
-            font_legend_title = pygame.font.SysFont("Helvetica", 32, bold=True)
-            font_legend = pygame.font.SysFont("Helvetica", 22, bold=True)
-            font_legend_desc = pygame.font.SysFont("Helvetica", 20)
+            font_legend_title = pygame.font.SysFont("Helvetica", 30, bold=True)
+            font_legend = pygame.font.SysFont("Helvetica", 20, bold=True)
+            font_legend_desc = pygame.font.SysFont("Helvetica", 18)
             
             legend_title = font_legend_title.render("POWER-UPS", True, (255, 255, 255))
             lt_shadow = font_legend_title.render("POWER-UPS", True, (0, 0, 0))
-            virtual_surface.blit(lt_shadow, (V_WIDTH // 2 - legend_title.get_width() // 2 + 3, 723))
-            virtual_surface.blit(legend_title, (V_WIDTH // 2 - legend_title.get_width() // 2, 720))
+            virtual_surface.blit(lt_shadow, (V_WIDTH // 2 - legend_title.get_width() // 2 + 3, 693))
+            virtual_surface.blit(legend_title, (V_WIDTH // 2 - legend_title.get_width() // 2, 690))
             
             legend = [
                 ("SHIELD", "Invincible + wall wrap", COLOR_SHIELD),
@@ -1556,10 +1567,10 @@ def main():
             
             col1_x = 100
             col2_x = V_WIDTH // 2 + 60
-            y_start = 770
+            y_start = 730
             for i, (name, desc, color) in enumerate(legend):
                 col_x = col1_x if i < 6 else col2_x
-                row_y = y_start + (i % 6) * 42
+                row_y = y_start + (i % 6) * 36
                 nm = font_legend.render(name, True, color)
                 ds = font_legend_desc.render(f"  {desc}", True, (180, 180, 190))
                 nm_shadow = font_legend.render(name, True, (0, 0, 0))
