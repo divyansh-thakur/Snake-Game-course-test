@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Snake - Cyberpunk Premium Edition</title>
+    <!-- Modern Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #06040c;
+            --card-bg: rgba(16, 12, 32, 0.75);
+            --border-color: rgba(0, 240, 255, 0.25);
+            --neon-cyan: #00f0ff;
+            --neon-green: #00ff88;
+            --neon-pink: #ff007f;
+            --neon-yellow: #ffe600;
+            --neon-purple: #bd00ff;
+            --neon-orange: #ff5e00;
+            --text-color: #f0f0ff;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(189, 0, 255, 0.08) 0%, transparent 45%),
+                radial-gradient(circle at 90% 80%, rgba(0, 240, 255, 0.08) 0%, transparent 45%);
+            color: var(--text-color);
+            font-family: 'Outfit', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        /* Ambient Parallax stars & scanline filters */
+        .crt-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.22) 50%);
+            background-size: 100% 4px;
+            z-index: 99;
+            pointer-events: none;
+        }
+
+        .crt-vignette {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            box-shadow: inset 0 0 120px rgba(0,0,0,0.85);
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* Container Card */
+        .game-container {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            box-shadow: 
+                0 24px 80px rgba(0, 0, 0, 0.8),
+                0 0 50px rgba(0, 240, 255, 0.15);
+            border-radius: 28px;
+            padding: 24px;
+            width: 100%;
+            max-width: 660px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Game Header HUD */
+        .hud {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+            padding-bottom: 14px;
+        }
+
+        .hud-logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.7rem;
+            font-weight: 900;
+            background: linear-gradient(90deg, var(--neon-cyan) 0%, var(--neon-purple) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 
+                -1px 0 0 rgba(255, 0, 127, 0.3),
+                1px 0 0 rgba(0, 240, 255, 0.3);
+            letter-spacing: 2px;
+        }
+
+        .hud-stats {
+            display: flex;
+            gap: 24px;
+        }
+
+        .stat-box {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        .stat-label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: rgba(240, 240, 255, 0.45);
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.45rem;
+            font-weight: 700;
+        }
+
+        .stat-value.score {
+            color: var(--neon-cyan);
+            text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+        }
+
+        .stat-value.high-score {
+            color: var(--neon-yellow);
+            text-shadow: 0 0 10px rgba(255, 230, 0, 0.3);
+        }
+
+        /* Canvas Wrapper & Display */
+        .canvas-wrapper {
+            position: relative;
+            background-color: #030206;
+            border-radius: 18px;
+            overflow: hidden;
+            border: 1px solid rgba(0, 240, 255, 0.2);
+            box-shadow: inset 0 0 35px rgba(0, 0, 0, 0.95);
+            width: 600px;
+            height: 600px;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Screen Overlays (Start & Game Over) */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(8, 6, 16, 0.92);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: all 0.3s ease;
+            padding: 24px;
+            text-align: center;
+        }
+
+        .overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .overlay-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.8rem;
+            font-weight: 900;
+            letter-spacing: 4px;
+            margin-bottom: 6px;
+        }
+
+        .overlay-title.start {
+            background: linear-gradient(135deg, var(--neon-cyan) 0%, var(--neon-purple) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 15px rgba(0, 240, 255, 0.4));
+        }
+
+        .overlay-title.gameover {
+            background: linear-gradient(135deg, var(--neon-pink) 0%, var(--neon-orange) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 15px rgba(255, 0, 127, 0.4));
+        }
+
+        .overlay-subtitle {
+            font-size: 0.95rem;
+            font-weight: 300;
+            color: rgba(240, 240, 255, 0.6);
+            margin-bottom: 24px;
+            letter-spacing: 0.5px;
+        }
+
+        /* Power-ups legend on start screen */
+        .powerups-legend {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+            width: 100%;
+            max-width: 440px;
+        }
+
+        .legend-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .legend-icon {
+            font-size: 1.25rem;
+            margin-bottom: 4px;
+        }
+
+        .legend-name {
+            font-size: 0.65rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .legend-name.shield { color: var(--neon-cyan); }
+        .legend-name.speed { color: var(--neon-yellow); }
+        .legend-name.slow { color: var(--neon-purple); }
+        .legend-name.shrink { color: var(--neon-green); }
+
+        .legend-desc {
+            font-size: 0.55rem;
+            color: rgba(240, 240, 255, 0.4);
+            margin-top: 2px;
+        }
+
+        /* Map selection arena buttons */
+        .map-selection {
+            width: 100%;
+            max-width: 440px;
+            margin-bottom: 28px;
+        }
+
+        .map-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: rgba(240, 240, 255, 0.5);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .map-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        .map-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            color: rgba(240, 240, 255, 0.7);
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 10px 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .map-btn:hover {
+            background: rgba(0, 240, 255, 0.05);
+            color: var(--neon-cyan);
+            border-color: rgba(0, 240, 255, 0.4);
+        }
+
+        .map-btn.active {
+            background: rgba(0, 240, 255, 0.12);
+            color: var(--neon-cyan);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+        }
+
+        .play-btn {
+            background: linear-gradient(90deg, var(--neon-cyan) 0%, var(--neon-purple) 100%);
+            color: #0b0816;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            padding: 14px 44px;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 0 25px rgba(0, 240, 255, 0.35);
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .play-btn:hover {
+            transform: scale(1.04);
+            box-shadow: 0 0 35px rgba(0, 240, 255, 0.55);
+        }
+
+        /* Active Power-up Overlay HUD */
+        .powerup-overlay-hud {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 8;
+        }
+
+        .active-powerup-bar {
+            background: rgba(16, 12, 32, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-color);
+            transition: opacity 0.3s ease;
+        }
+
+        .bar-fill-container {
+            width: 80px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            width: 100%;
+            border-radius: 4px;
+            transition: width 0.1s linear;
+        }
+
+        .bar-fill.shield { background: var(--neon-cyan); box-shadow: 0 0 8px var(--neon-cyan); }
+        .bar-fill.speed { background: var(--neon-yellow); box-shadow: 0 0 8px var(--neon-yellow); }
+        .bar-fill.slow { background: var(--neon-purple); box-shadow: 0 0 8px var(--neon-purple); }
+
+        /* Slow Motion purple screen frame tint */
+        .slowmo-tint {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            box-shadow: inset 0 0 60px rgba(189, 0, 255, 0.2);
+            pointer-events: none;
+            z-index: 7;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        /* Sound Control Icon */
+        .sound-toggle {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(240, 240, 255, 0.6);
+            width: 40px;
+            height: 40px;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            z-index: 100;
+        }
+
+        .sound-toggle:hover {
+            color: var(--neon-cyan);
+            border-color: var(--neon-cyan);
+            background: rgba(0, 240, 255, 0.05);
+        }
+
+        .sound-toggle.muted {
+            color: var(--neon-pink);
+            border-color: var(--neon-pink);
+        }
+
+        .footer-info {
+            margin-top: 14px;
+            font-size: 0.72rem;
+            color: rgba(240, 240, 255, 0.35);
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="crt-vignette"></div>
+    <div class="crt-overlay"></div>
+
+    <button class="sound-toggle" id="soundToggle">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sound-on"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+    </button>
+
+    <div class="game-container">
+        <!-- HUD -->
+        <div class="hud">
+            <div class="hud-logo">NEON SNAKE</div>
+            <div class="hud-stats">
+                <div class="stat-box">
+                    <div class="stat-label">Score</div>
+                    <div class="stat-value score" id="scoreVal">0000</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Best</div>
+                    <div class="stat-value high-score" id="highScoreVal">0000</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gameplay Screen -->
+        <div class="canvas-wrapper">
+            <!-- Start Screen Overlay -->
+            <div class="overlay" id="startOverlay">
+                <div class="overlay-title start">NEON SNAKE</div>
+                <div class="overlay-subtitle">A high-fidelity retro arcade experience</div>
+                
+                <!-- Level Map selection -->
+                <div class="map-selection">
+                    <div class="map-title">Select Arena Layout</div>
+                    <div class="map-grid">
+                        <button class="map-btn active" data-map="OPEN">Open</button>
+                        <button class="map-btn" data-map="PILLARS">Pillars</button>
+                        <button class="map-btn" data-map="THECROSS">Cross</button>
+                        <button class="map-btn" data-map="MAZE">Maze</button>
+                    </div>
+                </div>
+
+                <!-- Powerups Legend -->
+                <div class="powerups-legend">
+                    <div class="legend-item">
+                        <div class="legend-icon" style="color:var(--neon-cyan);">🛡️</div>
+                        <div class="legend-name shield">Shield</div>
+                        <div class="legend-desc">Pass through walls</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-icon" style="color:var(--neon-yellow);">⚡</div>
+                        <div class="legend-name speed">Speed</div>
+                        <div class="legend-desc">2x speed & score</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-icon" style="color:var(--neon-purple);">⏳</div>
+                        <div class="legend-name slow">Slow-Mo</div>
+                        <div class="legend-desc">Time slows down</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-icon" style="color:var(--neon-green);">✂️</div>
+                        <div class="legend-name shrink">Shrink</div>
+                        <div class="legend-desc">Cuts body size</div>
+                    </div>
+                </div>
+
+                <button class="play-btn" id="startBtn">START MISSION</button>
+            </div>
+
+            <!-- Game Over Screen Overlay -->
+            <div class="overlay hidden" id="gameOverOverlay">
+                <div class="overlay-title gameover">GAME OVER</div>
+                <div class="overlay-subtitle" id="gameOverStats">Score: 0000 | Best: 0000</div>
+                
+                <button class="play-btn" id="restartBtn">REDEPLOY</button>
+            </div>
+
+            <!-- Slowmo screen tint visual -->
+            <div class="slowmo-tint" id="slowmoTint"></div>
+
+            <!-- Active Power-up timer HUD bars -->
+            <div class="powerup-overlay-hud" id="powerupHud">
+                <!-- Appended dynamically -->
+            </div>
+
+            <canvas id="gameCanvas"></canvas>
+        </div>
+
+        <div class="footer-info">POWERED BY PYTHON & HTML5 CANVAS</div>
+    </div>
+
+    <!-- Web Sound Synth & Game Logic -->
+    <script>
+        // --- High-Performance Sound Synthesis (Web Audio API) ---
+        let audioCtx = null;
+        let isMuted = false;
+
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        function playSynthSound(freqs, durationMs, type = 'sine', volume = 0.15) {
+            if (isMuted) return;
+            try {
+                const ctx = getAudioContext();
+                const now = ctx.currentTime;
+                
+                const masterGain = ctx.createGain();
+                masterGain.gain.setValueAtTime(volume, now);
+                masterGain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
+                masterGain.connect(ctx.destination);
+
+                const osc = ctx.createOscillator();
+                osc.type = type;
+                
+                if (Array.isArray(freqs)) {
+                    const step = (durationMs / freqs.length) / 1000;
+                    freqs.forEach((freq, idx) => {
+                        osc.frequency.setValueAtTime(freq, now + idx * step);
+                    });
+                } else {
+                    osc.frequency.setValueAtTime(freqs, now);
+                }
+
+                osc.connect(masterGain);
+                osc.start(now);
+                osc.stop(now + durationMs / 1000);
+            } catch (err) {
+                console.error("Audio playback error:", err);
+            }
+        }
+
+        // Sound presets
+        const sounds = {
+            start: () => playSynthSound([440, 554, 659, 880], 400, 'sine', 0.2),
+            eat: () => playSynthSound([523, 784, 1046], 120, 'sine', 0.15),
+            crash: () => playSynthSound([220, 110, 55], 500, 'triangle', 0.3),
+            move: () => playSynthSound(180, 40, 'triangle', 0.03),
+            shieldDeflect: () => playSynthSound([587, 880, 587], 200, 'square', 0.2),
+            powerupPower: () => playSynthSound([330, 440, 554, 659, 880], 250, 'sawtooth', 0.15),
+            shrinkPop: () => playSynthSound([880, 1200, 1600], 150, 'sine', 0.2)
+        };
+
+        // Sound toggle UI handling
+        const soundToggle = document.getElementById('soundToggle');
+        soundToggle.addEventListener('click', () => {
+            isMuted = !isMuted;
+            if (isMuted) {
+                soundToggle.classList.add('muted');
+                soundToggle.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sound-off"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>';
+            } else {
+                soundToggle.classList.remove('muted');
+                soundToggle.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sound-on"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>';
+                getAudioContext();
+            }
+        });
+
+        // --- Game Config ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const GRID_COUNT = 30;
+        const GRID_SIZE = 20; // 600px width/height
+        const PLAY_SIZE = 600;
+
+        // Retina display HD scaling
+        const dpi = window.devicePixelRatio || 1;
+        canvas.width = PLAY_SIZE * dpi;
+        canvas.height = PLAY_SIZE * dpi;
+        ctx.scale(dpi, dpi);
+
+        // Map Layout configurations
+        let selectedMap = "OPEN";
+        let obstacles = [];
+
+        function buildMapLayout(mapName) {
+            obstacles = [];
+            if (mapName === "PILLARS") {
+                // 4 corner blocks
+                const addBlock = (sx, sy) => {
+                    for (let x = sx; x < sx + 2; x++) {
+                        for (let y = sy; y < sy + 2; y++) {
+                            obstacles.push({ x, y });
+                        }
+                    }
+                };
+                addBlock(5, 5);
+                addBlock(23, 5);
+                addBlock(5, 23);
+                addBlock(23, 23);
+            } else if (mapName === "THECROSS") {
+                // Large cross obstacle in middle
+                for (let x = 8; x <= 21; x++) obstacles.push({ x, y: 15 });
+                for (let y = 8; y <= 21; y++) {
+                    if (y !== 15) obstacles.push({ x: 15, y });
+                }
+            } else if (mapName === "MAZE") {
+                // Maze structure walls
+                for (let x = 5; x <= 24; x++) {
+                    if (x !== 14 && x !== 15 && x !== 16) {
+                        obstacles.push({ x, y: 7 });
+                        obstacles.push({ x, y: 22 });
+                    }
+                }
+                for (let y = 10; y <= 19; y++) {
+                    obstacles.push({ x: 7, y });
+                    obstacles.push({ x: 22, y });
+                }
+            }
+        }
+
+        // Map Button clicks listener
+        document.querySelectorAll('.map-btn').forEach(btn => {
+            btn.addEventListener('click', e => {
+                document.querySelectorAll('.map-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                selectedMap = btn.getAttribute('data-map');
+                buildMapLayout(selectedMap);
+                resetDemo();
+                playSynthSound(400, 50, 'sine', 0.1);
+            });
+        });
+
+        // State Machine
+        let state = 'START';
+        let snake = [];
+        let prevSnake = [];
+        let direction = { x: 0, y: -1 };
+        let dirQueue = [];
+        let food = { x: 15, y: 10 };
+        let activePowerUp = {
+            SHIELD: 0, // Remaining active duration (seconds)
+            SPEED: 0,
+            SLOW: 0
+        };
+        let spawnedPowerUp = null; // Current power-up on board: { type, x, y, timeLeft }
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('neon_snake_highscore')) || 0;
+        document.getElementById('highScoreVal').innerText = highScore.toString().padStart(4, '0');
+
+        // Animation / FX elements
+        let particles = [];
+        let scorePops = [];
+        let gridRipples = [];
+        let screenShakeTime = 0;
+        let screenShakeIntensity = 0;
+        let timeTicks = 0;
+        let logicalTickCooldown = 150;
+        let accumulatedTime = 0;
+        let lastTime = 0;
+        let wasPopped = false;
+        let poppedTailPos = null;
+
+        // DOM elements
+        const startOverlay = document.getElementById('startOverlay');
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+        const scoreValText = document.getElementById('scoreVal');
+        const powerupHud = document.getElementById('powerupHud');
+        const slowmoTint = document.getElementById('slowmoTint');
+        
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        // --- Grid Ripple Effect ---
+        class GridRipple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 10;
+                this.maxRadius = 140;
+                this.alpha = 0.55;
+            }
+            update() {
+                this.radius += 4.5;
+                this.alpha = Math.max(0, 0.55 * (1.0 - (this.radius / this.maxRadius)));
+            }
+            draw() {
+                if (this.alpha > 0) {
+                    ctx.save();
+                    ctx.strokeStyle = `rgba(0, 240, 255, ${this.alpha})`;
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+        }
+
+        // --- Particle System ---
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1.8 + Math.random() * 4.0;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.color = color;
+                this.alpha = 1.0;
+                this.size = 3.5 + Math.random() * 4.5;
+                this.decay = 0.015 + Math.random() * 0.03;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+                this.alpha = Math.max(0, this.alpha - this.decay);
+                this.size = Math.max(0.5, this.size - 0.08);
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class ScorePop {
+            constructor(text, x, y, color) {
+                this.text = text;
+                this.x = x;
+                this.y = y;
+                this.vy = -1.2;
+                this.alpha = 1.0;
+                this.color = color;
+            }
+            update() {
+                this.y += this.vy;
+                this.alpha = Math.max(0, this.alpha - 0.015);
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.font = '900 15px Orbitron';
+                ctx.textAlign = 'center';
+                ctx.fillText(this.text, this.x, this.y);
+                ctx.restore();
+            }
+        }
+
+        function triggerScreenShake(duration, intensity) {
+            screenShakeTime = duration;
+            screenShakeIntensity = intensity;
+        }
+
+        function spawnExplosion(x, y, color, count = 20) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // --- AI Screensaver Decision Loop ---
+        function runAIDecision() {
+            if (snake.length === 0) return;
+            const head = snake[0];
+            
+            // Choose target item (go for powerup if available, otherwise food)
+            const target = spawnedPowerUp ? spawnedPowerUp : food;
+
+            const dirs = [
+                { x: 0, y: -1 },
+                { x: 0, y: 1 },
+                { x: -1, y: 0 },
+                { x: 1, y: 0 }
+            ];
+
+            dirs.sort((a, b) => {
+                const distA = Math.abs((head.x + a.x) - target.x) + Math.abs((head.y + a.y) - target.y);
+                const distB = Math.abs((head.x + b.x) - target.x) + Math.abs((head.y + b.y) - target.y);
+                return distA - distB;
+            });
+
+            for (let d of dirs) {
+                if (d.x === -direction.x && d.y === -direction.y) continue;
+                
+                const np = { x: head.x + d.x, y: head.y + d.y };
+                if (np.x < 0 || np.x >= GRID_COUNT || np.y < 0 || np.y >= GRID_COUNT) continue;
+                
+                // Crash obstacles check
+                let hitObstacle = false;
+                for (let obs of obstacles) {
+                    if (obs.x === np.x && obs.y === np.y) hitObstacle = true;
+                }
+                if (hitObstacle) continue;
+
+                // Hit self check
+                let hitSelf = false;
+                for (let part of snake) {
+                    if (part.x === np.x && part.y === np.y) hitSelf = true;
+                }
+                if (hitSelf) continue;
+
+                direction = d;
+                return;
+            }
+
+            for (let d of dirs) {
+                if (d.x !== -direction.x || d.y !== -direction.y) {
+                    direction = d;
+                    return;
+                }
+            }
+        }
+
+        // --- Game Initializer ---
+        function startGame() {
+            getAudioContext();
+            sounds.start();
+            buildMapLayout(selectedMap);
+            
+            startOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+
+            snake = [
+                { x: 15, y: 15 },
+                { x: 15, y: 16 },
+                { x: 15, y: 17 }
+            ];
+            prevSnake = JSON.parse(JSON.stringify(snake));
+            direction = { x: 0, y: -1 };
+            dirQueue = [];
+            score = 0;
+            logicalTickCooldown = 150;
+            scoreValText.innerText = "0000";
+
+            activePowerUp = { SHIELD: 0, SPEED: 0, SLOW: 0 };
+            spawnedPowerUp = null;
+            
+            spawnFood();
+            
+            particles = [];
+            scorePops = [];
+            gridRipples = [];
+            state = 'PLAY';
+        }
+
+        function resetDemo() {
+            snake = [
+                { x: 15, y: 15 },
+                { x: 15, y: 16 },
+                { x: 15, y: 17 }
+            ];
+            prevSnake = JSON.parse(JSON.stringify(snake));
+            direction = { x: 0, y: -1 };
+            spawnedPowerUp = null;
+            spawnFood();
+        }
+
+        // --- Game Keyboard Controls ---
+        window.addEventListener('keydown', e => {
+            // Space or Enter to start / restart
+            if (state === 'START' || state === 'GAMEOVER') {
+                if (e.key === ' ' || e.key === 'Spacebar' || e.key === 'Enter') {
+                    e.preventDefault();
+                    startGame();
+                }
+                return;
+            }
+
+            if (state !== 'PLAY') return;
+
+            let nextDir = null;
+            const key = e.key;
+            
+            // Map WASD & Arrow Keys
+            if (key === 'ArrowUp' || key === 'Up' || key.toLowerCase() === 'w') {
+                nextDir = { x: 0, y: -1 };
+            } else if (key === 'ArrowDown' || key === 'Down' || key.toLowerCase() === 's') {
+                nextDir = { x: 0, y: 1 };
+            } else if (key === 'ArrowLeft' || key === 'Left' || key.toLowerCase() === 'a') {
+                nextDir = { x: -1, y: 0 };
+            } else if (key === 'ArrowRight' || key === 'Right' || key.toLowerCase() === 'd') {
+                nextDir = { x: 1, y: 0 };
+            }
+
+            if (nextDir) {
+                e.preventDefault();
+                
+                // Return focus to window so Space/Enter controls don't trigger buttons accidentally
+                if (document.activeElement) {
+                    document.activeElement.blur();
+                }
+
+                // Buffer direction changes safely
+                const lastDir = dirQueue.length > 0 ? dirQueue[dirQueue.length - 1] : direction;
+                const isOpposite = (nextDir.x === -lastDir.x && nextDir.y === -lastDir.y);
+                const isSame = (nextDir.x === lastDir.x && nextDir.y === lastDir.y);
+                
+                if (!isOpposite && !isSame) {
+                    if (dirQueue.length < 2) {
+                        dirQueue.push(nextDir);
+                    }
+                }
+            }
+        });
+
+        function spawnFood() {
+            while (true) {
+                const rx = Math.floor(Math.random() * GRID_COUNT);
+                const ry = Math.floor(Math.random() * GRID_COUNT);
+                
+                let blocked = false;
+                for (let part of snake) if (part.x === rx && part.y === ry) blocked = true;
+                for (let obs of obstacles) if (obs.x === rx && obs.y === ry) blocked = true;
+                
+                if (!blocked) {
+                    food = { x: rx, y: ry };
+                    break;
+                }
+            }
+        }
+
+        // Randomly spawn active Power-Ups on board
+        function maybeSpawnPowerUp() {
+            if (spawnedPowerUp) return; // Only one active on board
+            if (Math.random() < 0.22) { // 22% chance of spawning
+                const types = ['SHIELD', 'SPEED', 'SLOW', 'SHRINK'];
+                const selectedType = types[Math.floor(Math.random() * types.length)];
+                
+                while (true) {
+                    const rx = Math.floor(Math.random() * GRID_COUNT);
+                    const ry = Math.floor(Math.random() * GRID_COUNT);
+                    
+                    let blocked = false;
+                    for (let part of snake) if (part.x === rx && part.y === ry) blocked = true;
+                    for (let obs of obstacles) if (obs.x === rx && obs.y === ry) blocked = true;
+                    if (food.x === rx && food.y === ry) blocked = true;
+                    
+                    if (!blocked) {
+                        spawnedPowerUp = {
+                            type: selectedType,
+                            x: rx,
+                            y: ry,
+                            timeLeft: 8.0 // Fades after 8 seconds
+                        };
+                        break;
+                    }
+                }
+            }
+        }
+
+        buildMapLayout("OPEN");
+        resetDemo();
+
+        // --- Logical Game Update Loop ---
+        function gameTick() {
+            if (state === 'START') {
+                runAIDecision();
+            }
+
+            if (dirQueue.length > 0) {
+                direction = dirQueue.shift();
+            }
+
+            const head = snake[0];
+            const nextHead = { x: head.x + direction.x, y: head.y + direction.y };
+
+            // Wrap logic for SHIELD power-up
+            if (activePowerUp.SHIELD > 0) {
+                if (nextHead.x < 0) nextHead.x = GRID_COUNT - 1;
+                if (nextHead.x >= GRID_COUNT) nextHead.x = 0;
+                if (nextHead.y < 0) nextHead.y = GRID_COUNT - 1;
+                if (nextHead.y >= GRID_COUNT) nextHead.y = 0;
+            }
+
+            // Normal boundary and collision checking
+            let crash = false;
+            if (activePowerUp.SHIELD <= 0) {
+                if (nextHead.x < 0 || nextHead.x >= GRID_COUNT || nextHead.y < 0 || nextHead.y >= GRID_COUNT) {
+                    crash = true;
+                }
+                if (!crash) {
+                    // Check obstacle collision
+                    for (let obs of obstacles) {
+                        if (obs.x === nextHead.x && obs.y === nextHead.y) crash = true;
+                    }
+                }
+                if (!crash) {
+                    // Check self collision
+                    for (let part of snake) {
+                        if (part.x === nextHead.x && part.y === nextHead.y) crash = true;
+                    }
+                }
+            } else {
+                // Shield is active: survive self and obstacle crash (pass straight through)
+                // Just play deflect sparks if crawling inside obstacle
+                for (let obs of obstacles) {
+                    if (obs.x === nextHead.x && obs.y === nextHead.y) {
+                        sounds.shieldDeflect();
+                        triggerScreenShake(2, 2);
+                        spawnExplosion(nextHead.x * GRID_SIZE + GRID_SIZE/2, nextHead.y * GRID_SIZE + GRID_SIZE/2, '#00f0ff', 2);
+                    }
+                }
+            }
+
+            if (crash) {
+                if (state === 'PLAY') {
+                    sounds.crash();
+                    triggerScreenShake(25, 12);
+                    const hx = head.x * GRID_SIZE + GRID_SIZE/2;
+                    const hy = head.y * GRID_SIZE + GRID_SIZE/2;
+                    spawnExplosion(hx, hy, '#ff007f', 35);
+                    state = 'GAMEOVER';
+                    
+                    if (score > highScore) {
+                        highScore = score;
+                        localStorage.setItem('neon_snake_highscore', highScore);
+                        document.getElementById('highScoreVal').innerText = highScore.toString().padStart(4, '0');
+                    }
+                    document.getElementById('gameOverStats').innerText = `Score: ${score.toString().padStart(4, '0')} | Best: ${highScore.toString().padStart(4, '0')}`;
+                    gameOverOverlay.classList.remove('hidden');
+                } else {
+                    resetDemo();
+                }
+                return;
+            }
+
+            // Ripple grid visual trigger
+            const hx = nextHead.x * GRID_SIZE + GRID_SIZE/2;
+            const hy = nextHead.y * GRID_SIZE + GRID_SIZE/2;
+            gridRipples.push(new GridRipple(hx, hy));
+
+            // Check food collision
+            const eating = (nextHead.x === food.x && nextHead.y === food.y);
+            
+            // Check powerup collision
+            let collectingPowerUp = false;
+            if (spawnedPowerUp && nextHead.x === spawnedPowerUp.x && nextHead.y === spawnedPowerUp.y) {
+                collectingPowerUp = true;
+            }
+
+            prevSnake = JSON.parse(JSON.stringify(snake));
+            snake.unshift(nextHead);
+
+            if (eating) {
+                let addScore = 100;
+                let popColor = '#ffe600';
+                
+                if (activePowerUp.SPEED > 0) {
+                    addScore = 200; // Double score in speed mode
+                    popColor = '#ff007f';
+                }
+
+                if (state === 'PLAY') {
+                    score += addScore;
+                    scoreValText.innerText = score.toString().padStart(4, '0');
+                    sounds.eat();
+                    spawnExplosion(hx, hy, '#ff007f');
+                    scorePops.push(new ScorePop(`+${addScore}`, hx, hy - 15, popColor));
+                    triggerScreenShake(6, 4);
+                    logicalTickCooldown = Math.max(65, 150 - (score / 100) * 3);
+                } else {
+                    spawnExplosion(hx, hy, '#ff007f');
+                }
+                spawnFood();
+                maybeSpawnPowerUp();
+                wasPopped = false;
+                poppedTailPos = null;
+            } else if (collectingPowerUp) {
+                const powerType = spawnedPowerUp.type;
+                spawnedPowerUp = null;
+                triggerScreenShake(8, 6);
+                
+                if (powerType === 'SHRINK') {
+                    // Instantly cut snake size
+                    sounds.shrinkPop();
+                    spawnExplosion(hx, hy, '#00ff88', 25);
+                    const cutLength = Math.max(3, Math.round(snake.length * 0.7));
+                    while (snake.length > cutLength) snake.pop();
+                    scorePops.push(new ScorePop("BODY CUT -30%", hx, hy - 18, '#00ff88'));
+                } else {
+                    // Timed powers
+                    sounds.powerupPower();
+                    activePowerUp[powerType] = 8.0; // 8 seconds duration
+                    let bubbleColor = '#00f0ff';
+                    if (powerType === 'SPEED') bubbleColor = '#ffe600';
+                    if (powerType === 'SLOW') bubbleColor = '#bd00ff';
+                    spawnExplosion(hx, hy, bubbleColor, 25);
+                    scorePops.push(new ScorePop(`${powerType} ACTIVE`, hx, hy - 18, bubbleColor));
+                }
+                wasPopped = true;
+                poppedTailPos = snake.pop();
+            } else {
+                wasPopped = true;
+                poppedTailPos = snake.pop();
+            }
+
+            if (state === 'PLAY' && Math.random() < 0.15 && activePowerUp.SPEED <= 0) {
+                sounds.move();
+            }
+        }
+
+        // --- Render Canvas Scene ---
+        function draw(interpolation) {
+            ctx.fillStyle = '#06040c';
+            ctx.fillRect(0, 0, PLAY_SIZE, PLAY_SIZE);
+
+            // A. Draw retro vaporwave sun (Vaporwave horizon)
+            drawVaporwaveSun();
+            
+            // B. Draw perspective 3D lines grid
+            drawPerspectiveGrid();
+
+            // C. Draw gameplay grid lines (Subtle neon overlay)
+            ctx.save();
+            const gridAlpha = 0.02 + 0.01 * Math.sin(timeTicks * 0.005);
+            ctx.strokeStyle = `rgba(0, 240, 255, ${gridAlpha})`;
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= GRID_COUNT; i++) {
+                ctx.beginPath(); ctx.moveTo(i * GRID_SIZE, 0); ctx.lineTo(i * GRID_SIZE, PLAY_SIZE); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, i * GRID_SIZE); ctx.lineTo(PLAY_SIZE, i * GRID_SIZE); ctx.stroke();
+            }
+            ctx.restore();
+
+            // D. Draw Ripples
+            gridRipples.forEach(r => r.draw());
+
+            // E. Draw Obstacles
+            ctx.save();
+            obstacles.forEach(obs => {
+                const px = obs.x * GRID_SIZE;
+                const py = obs.y * GRID_SIZE;
+                
+                // Base glowing wall
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = 'rgba(255, 94, 0, 0.8)';
+                
+                // Draw metallic-cyberpunk grid wall
+                const grad = ctx.createLinearGradient(px, py, px + GRID_SIZE, py + GRID_SIZE);
+                grad.addColorStop(0, '#ff5e00');
+                grad.addColorStop(1, '#9b0000');
+                ctx.fillStyle = grad;
+                
+                ctx.beginPath();
+                ctx.roundRect(px + 1, py + 1, GRID_SIZE - 2, GRID_SIZE - 2, 5);
+                ctx.fill();
+                
+                // Grid details inside wall
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = 'rgba(255, 230, 0, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(px + 4, py + 4, GRID_SIZE - 8, GRID_SIZE - 8);
+            });
+            ctx.restore();
+
+            // F. Render Spawned Power-Up on board
+            if (spawnedPowerUp) {
+                drawPowerUpItem();
+            }
+
+            // G. Render Food
+            ctx.save();
+            const foodScale = 1.0 + 0.12 * Math.sin(timeTicks * 0.01);
+            const foodRadius = (GRID_SIZE / 2 - 1) * foodScale;
+            const fx = food.x * GRID_SIZE + GRID_SIZE/2;
+            const fy = food.y * GRID_SIZE + GRID_SIZE/2;
+
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#ff007f';
+            ctx.fillStyle = '#ff007f';
+            ctx.beginPath();
+            ctx.arc(fx, fy, foodRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Gloss highlight shine
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.beginPath();
+            ctx.arc(fx - foodRadius*0.3, fy - foodRadius*0.3, foodRadius*0.18, 0, Math.PI*2);
+            ctx.fill();
+            ctx.restore();
+
+            // H. Render Snake with Interpolation
+            const t = interpolation;
+
+            // Draw shrinking popped tail
+            if (wasPopped && poppedTailPos) {
+                ctx.save();
+                const sz = GRID_SIZE * (1.0 - t);
+                const offset = (GRID_SIZE - sz) / 2;
+                const px = poppedTailPos.x * GRID_SIZE + offset;
+                const py = poppedTailPos.y * GRID_SIZE + offset;
+                ctx.fillStyle = getSnakeColor(snake.length);
+                ctx.beginPath();
+                ctx.roundRect(px, py, sz, sz, 4 * (1.0 - t));
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Active Snake segments
+            for (let i = 0; i < snake.length; i++) {
+                let p_pos = prevSnake[i] || prevSnake[prevSnake.length - 1] || snake[i];
+                let c_pos = snake[i];
+
+                const ix = p_pos.x + (c_pos.x - p_pos.x) * t;
+                const iy = p_pos.y + (c_pos.y - p_pos.y) * t;
+
+                const px = ix * GRID_SIZE;
+                const py = iy * GRID_SIZE;
+
+                let scaleMult = 1.0;
+                if (snake.length > 1 && i > 0) {
+                    scaleMult = 1.0 - 0.38 * (i / (snake.length - 1));
+                }
+
+                const size = GRID_SIZE * scaleMult * 1.04;
+                const offset = (GRID_SIZE - size) / 2;
+
+                ctx.save();
+                const snakeRGB = getSnakeColor(i);
+
+                ctx.shadowBlur = i === 0 ? 20 : 6;
+                ctx.shadowColor = snakeRGB;
+                ctx.fillStyle = snakeRGB;
+
+                if (activePowerUp.SHIELD > 0) {
+                    ctx.shadowColor = '#00f0ff';
+                } else if (activePowerUp.SPEED > 0) {
+                    ctx.shadowColor = '#ffe600';
+                }
+
+                ctx.beginPath();
+                ctx.roundRect(px + offset, py + offset, size, size, 6 * scaleMult);
+                ctx.fill();
+
+                // Custom head drawing details (Eyes, Shield Aura)
+                if (i === 0) {
+                    // Draw Shield Bubble around head
+                    if (activePowerUp.SHIELD > 0) {
+                        ctx.save();
+                        ctx.shadowBlur = 18;
+                        ctx.shadowColor = '#00f0ff';
+                        ctx.strokeStyle = `rgba(0, 240, 255, ${0.45 + 0.2 * Math.sin(timeTicks * 0.015)})`;
+                        ctx.lineWidth = 2.5;
+                        ctx.beginPath();
+                        ctx.arc(px + GRID_SIZE/2, py + GRID_SIZE/2, GRID_SIZE * 0.95, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+
+                    // Eyes
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = '#ffffff';
+                    const eyeSize = Math.max(2, size * 0.2);
+                    const eyeOffset = size * 0.24;
+                    let eyes = [];
+
+                    if (direction.x === 1) { // Right
+                        eyes = [{ x: px + size - eyeOffset, y: py + eyeOffset }, { x: px + size - eyeOffset, y: py + size - eyeOffset }];
+                    } else if (direction.x === -1) { // Left
+                        eyes = [{ x: px + eyeOffset, y: py + eyeOffset }, { x: px + eyeOffset, y: py + size - eyeOffset }];
+                    } else if (direction.y === 1) { // Down
+                        eyes = [{ x: px + eyeOffset, y: py + size - eyeOffset }, { x: px + size - eyeOffset, y: py + size - eyeOffset }];
+                    } else { // Up
+                        eyes = [{ x: px + eyeOffset, y: py + eyeOffset }, { x: px + size - eyeOffset, y: py + eyeOffset }];
+                    }
+
+                    eyes.forEach(eye => {
+                        ctx.beginPath(); ctx.arc(eye.x, eye.y, eyeSize, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#0b0816';
+                        ctx.beginPath(); ctx.arc(eye.x + direction.x * 0.8, eye.y + direction.y * 0.8, eyeSize * 0.5, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#ffffff';
+                    });
+                }
+                ctx.restore();
+            }
+
+            // I. Update and Draw Particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+                if (particles[i].alpha <= 0) particles.splice(i, 1);
+            }
+
+            // J. Update and Draw Floating Scores
+            for (let i = scorePops.length - 1; i >= 0; i--) {
+                scorePops[i].update();
+                scorePops[i].draw();
+                if (scorePops[i].alpha <= 0) scorePops.splice(i, 1);
+            }
+        }
+
+        // --- Helper: Dynamic snake color mapping ---
+        function getSnakeColor(idx) {
+            if (activePowerUp.SHIELD > 0) {
+                // Electric Cyan/Blue Shield skin
+                const ratio = idx / Math.max(1, snake.length - 1);
+                return `rgb(0, ${Math.floor(200 + 55 * ratio)}, 255)`;
+            }
+            if (activePowerUp.SPEED > 0) {
+                // Gold / Yellow speed skin
+                const ratio = idx / Math.max(1, snake.length - 1);
+                return `rgb(255, ${Math.floor(200 + 55 * ratio)}, 0)`;
+            }
+            // Standard Neon green/cyan gradient skin
+            const ratio = idx / Math.max(1, snake.length - 1);
+            const r = 0;
+            const g = 255;
+            const b = Math.floor(136 + 119 * ratio);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        // --- Helper: Draw Synthwave Retro Sun ---
+        function drawVaporwaveSun() {
+            const cx = PLAY_SIZE / 2;
+            const cy = PLAY_SIZE / 2 - 35;
+            const r = 100;
+            
+            ctx.save();
+            const grad = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
+            grad.addColorStop(0.1, '#ff007f'); // Hot Neon pink
+            grad.addColorStop(0.9, '#ffaa00'); // Neon Gold/Orange
+            ctx.fillStyle = grad;
+            
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+            
+            // Draw slits inside sun
+            ctx.fillStyle = '#06040c';
+            const numSlits = 7;
+            for (let i = 0; i < numSlits; i++) {
+                const slitHeight = 3 + i * 2.2;
+                // Slowly scroll lines
+                const slitY = cy + r - 30 - i * 21 + Math.sin(timeTicks * 0.0008) * 1.8;
+                ctx.fillRect(cx - r - 10, slitY, r * 2 + 20, slitHeight);
+            }
+            ctx.restore();
+        }
+
+        // --- Helper: Draw 3D Perspective Grid ---
+        function drawPerspectiveGrid() {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.07)';
+            ctx.lineWidth = 1.8;
+            
+            const horizonY = PLAY_SIZE / 2 + 50;
+            const numLines = 14;
+            const cx = PLAY_SIZE / 2;
+
+            // Perspective diagonal grid lines
+            for (let i = 0; i <= numLines; i++) {
+                const t = i / numLines;
+                const sx = cx + (t - 0.5) * 110;
+                const ex = cx + (t - 0.5) * 1100;
+                ctx.beginPath(); ctx.moveTo(sx, horizonY); ctx.lineTo(ex, PLAY_SIZE); ctx.stroke();
+            }
+            
+            // Perspective horizontal grid lines
+            const numHoriz = 7;
+            for (let i = 0; i < numHoriz; i++) {
+                const t = ((i + (timeTicks * 0.0008) % 1.0) / numHoriz);
+                const y = horizonY + t * t * (PLAY_SIZE - horizonY);
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(PLAY_SIZE, y); ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        // --- Helper: Draw Power-Up item on board ---
+        function drawPowerUpItem() {
+            const px = spawnedPowerUp.x * GRID_SIZE + GRID_SIZE/2;
+            const py = spawnedPowerUp.y * GRID_SIZE + GRID_SIZE/2;
+            
+            // Pulse anim
+            const scale = 1.0 + 0.15 * Math.sin(timeTicks * 0.015);
+            const size = GRID_SIZE * scale;
+            
+            let color = '#00f0ff';
+            let symbol = '🛡️';
+            if (spawnedPowerUp.type === 'SPEED') { color = '#ffe600'; symbol = '⚡'; }
+            if (spawnedPowerUp.type === 'SLOW') { color = '#bd00ff'; symbol = '⏳'; }
+            if (spawnedPowerUp.type === 'SHRINK') { color = '#00ff88'; symbol = '✂️'; }
+
+            // Glow ring
+            ctx.save();
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = color;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(px, py, size/2, 0, Math.PI*2);
+            ctx.stroke();
+
+            // Inner symbol icon
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `${Math.round(size * 0.55)}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(symbol, px, py);
+            ctx.restore();
+        }
+
+        // --- UI Powerups Duration bar updates ---
+        function updatePowerUpHud() {
+            powerupHud.innerHTML = '';
+            
+            // Shield
+            if (activePowerUp.SHIELD > 0) {
+                createHudBar('Shield 🛡️', activePowerUp.SHIELD, 'shield');
+            }
+            // Speed
+            if (activePowerUp.SPEED > 0) {
+                createHudBar('Speed ⚡', activePowerUp.SPEED, 'speed');
+            }
+            // Slow
+            if (activePowerUp.SLOW > 0) {
+                createHudBar('Slow-Mo ⏳', activePowerUp.SLOW, 'slow');
+                slowmoTint.style.opacity = '1';
+            } else {
+                slowmoTint.style.opacity = '0';
+            }
+        }
+
+        function createHudBar(name, val, classType) {
+            const pct = (val / 8.0) * 100;
+            const div = document.createElement('div');
+            div.className = 'active-powerup-bar';
+            div.innerHTML = `
+                <span>${name}</span>
+                <div class="bar-fill-container">
+                    <div class="bar-fill ${classType}" style="width: ${pct}%"></div>
+                </div>
+            `;
+            powerupHud.appendChild(div);
+        }
+
+        // --- Core Animation Frame Frame-Loop ---
+        function loop(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            const elapsed = timestamp - lastTime;
+            lastTime = timestamp;
+
+            timeTicks += elapsed;
+
+            // Decay active powerup counters
+            let activeElapsed = elapsed / 1000.0;
+            
+            // Slow motion decays slower
+            if (activePowerUp.SLOW > 0) {
+                activeElapsed = activeElapsed * 0.5;
+            }
+
+            if (activePowerUp.SHIELD > 0) activePowerUp.SHIELD = Math.max(0, activePowerUp.SHIELD - activeElapsed);
+            if (activePowerUp.SPEED > 0) activePowerUp.SPEED = Math.max(0, activePowerUp.SPEED - activeElapsed);
+            if (activePowerUp.SLOW > 0) activePowerUp.SLOW = Math.max(0, activePowerUp.SLOW - activeElapsed);
+
+            // Tick down spawned powerup on board
+            if (spawnedPowerUp) {
+                spawnedPowerUp.timeLeft -= elapsed / 1000.0;
+                if (spawnedPowerUp.timeLeft <= 0) {
+                    spawnedPowerUp = null; // Fades away
+                }
+            }
+
+            // Update Powerups HUD
+            if (state === 'PLAY') {
+                updatePowerUpHud();
+            } else {
+                powerupHud.innerHTML = '';
+                slowmoTint.style.opacity = '0';
+            }
+
+            // Screen Shake trigger offsets
+            if (screenShakeTime > 0) {
+                screenShakeTime--;
+                const dx = (Math.random() - 0.5) * screenShakeIntensity;
+                const dy = (Math.random() - 0.5) * screenShakeIntensity;
+                canvas.style.transform = `translate(${dx}px, ${dy}px)`;
+            } else {
+                canvas.style.transform = 'translate(0px, 0px)';
+            }
+
+            // Update Ripples
+            for (let i = gridRipples.length - 1; i >= 0; i--) {
+                gridRipples[i].update();
+                if (gridRipples[i].alpha <= 0) gridRipples.splice(i, 1);
+            }
+
+            // Tick logic adjustments based on Speed or Slow power-ups
+            let speedFactor = 1.0;
+            if (activePowerUp.SPEED > 0) speedFactor = 1.7; // Speed moves faster
+            if (activePowerUp.SLOW > 0) speedFactor = 0.55; // Slow-mo moves slower
+
+            accumulatedTime += elapsed;
+            const currentLogicalCooldown = logicalTickCooldown / speedFactor;
+            
+            if (accumulatedTime >= currentLogicalCooldown) {
+                gameTick();
+                accumulatedTime = 0;
+            }
+
+            // Draw everything with render interpolation ratio
+            const interpolation = Math.min(1.0, accumulatedTime / currentLogicalCooldown);
+            draw(interpolation);
+
+            // Fading trail behind snake tail
+            if ((state === 'PLAY' || state === 'START') && snake.length > 0) {
+                const tail = snake[snake.length - 1];
+                let trailColor = '#00ff88'; // green
+                
+                if (activePowerUp.SHIELD > 0) trailColor = '#00f0ff'; // blue
+                else if (activePowerUp.SPEED > 0) trailColor = '#ffe600'; // yellow
+
+                if (Math.random() < 0.3) {
+                    const tx = tail.x * GRID_SIZE + GRID_SIZE/2 + (Math.random() - 0.5) * 6;
+                    const ty = tail.y * GRID_SIZE + GRID_SIZE/2 + (Math.random() - 0.5) * 6;
+                    particles.push(new Particle(tx, ty, trailColor));
+                }
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        // Start core loop
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>
