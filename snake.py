@@ -162,8 +162,8 @@ def draw_glow_circle(surface, color, center, radius, glow_radius, alpha=50):
 def draw_text_shadow(surface, text, font, color, x, y, shadow_color=(0, 0, 0), shadow_offset=3):
     shadow = font.render(text, True, shadow_color)
     surface.blit(shadow, (x + shadow_offset, y + shadow_offset))
-    main = font.render(text, True, color)
-    surface.blit(main, (x, y))
+    main_text = font.render(text, True, color)
+    surface.blit(main_text, (x, y))
 
 def render_glowing_text(text, font, color, glow_color, glow_size=4):
     text_surf = font.render(text, True, color)
@@ -723,7 +723,7 @@ def main():
     
     # Player inventories
     score = 0
-    laser_ammo = 0
+    laser_ammo = 3
     rewind_charges = 1
     
     # Active powers timer counters (seconds)
@@ -802,7 +802,7 @@ def main():
                         food = Food(snake.body)
                         spawned_powerup = None
                         score = 0
-                        laser_ammo = 0
+                        laser_ammo = 3
                         rewind_charges = 1
                         active_powers = {'SHIELD': 0.0, 'SPEED': 0.0, 'SLOW': 0.0, 'GHOST': 0.0, 'MAGNET': 0.0, 'DOUBLE': 0.0, 'TAILSHIELD': 0.0, 'TELEPORT': 0.0}
                         history_buffer = []
@@ -820,6 +820,8 @@ def main():
                         move_obstacle_timer = 0.0
                         difficulty_level = 1
                         screen_shake = ScreenShake()
+                        prev_active_powers = dict(active_powers)
+                        show_help = False
                     elif event.key == pygame.K_1:
                         selected_map = MAP_OPEN
                         build_map(selected_map)
@@ -876,35 +878,54 @@ def main():
                                     particles.spawn_explosion(px, py, OBSTACLE_COLOR, 15)
                                     play_synth_sound(200, 200, 'noise', 0.25)
                                     break
-                                    
-                                # Vaporize snake's own tail (tail cutter!)
-                                if target_cell in snake.body:
-                                    idx = snake.body.index(target_cell)
-                                    # Don't cut the head or reduce snake below 2 segments
-                                    if idx == 0 or len(snake.body) - 1 <= 2:
+                                
+                                # Vaporize moving obstacle
+                                for mi, mo in enumerate(move_obstacles):
+                                    if mo['pos'] == target_cell:
+                                        px = target_cell[0] * V_GRID_SIZE + V_GRID_SIZE//2
+                                        py = target_cell[1] * V_GRID_SIZE + V_HEADER_HEIGHT + V_GRID_SIZE//2
+                                        particles.spawn_explosion(px, py, (255, 50, 50), 20)
+                                        play_synth_sound(300, 200, 'noise', 0.25)
+                                        score += 50
+                                        floating_texts.append(FloatingText("+50 VAPORIZED", px, py - 25, (255, 50, 50)))
+                                        move_obstacles.pop(mi)
                                         break
-                                    # Vaporize from index down to tail
-                                    cut_count = len(snake.body) - idx
-                                    for tail_idx in range(len(snake.body) - 1, idx - 1, -1):
-                                        t_cell = snake.body[tail_idx]
-                                        px = t_cell[0] * V_GRID_SIZE + V_GRID_SIZE//2
-                                        py = t_cell[1] * V_GRID_SIZE + V_HEADER_HEIGHT + V_GRID_SIZE//2
-                                        particles.spawn_explosion(px, py, SNAKE_COLOR, 8)
-                                        snake.body.pop()
-                                    
-                                    play_synth_sound(300, 300, 'noise', 0.25)
-                                    floating_texts.append(FloatingText(f"TAIL CUT -{cut_count}", hx*V_GRID_SIZE, hy*V_GRID_SIZE+V_HEADER_HEIGHT, SNAKE_HEAD_COLOR))
-                                    break
-                                    
-                                # Map boundaries check
-                                if target_cell[0] < 0 or target_cell[0] >= COLS or target_cell[1] < 0 or target_cell[1] >= ROWS:
-                                    break
+                                else:
+                                    # Vaporize snake's own tail (tail cutter!)
+                                    if target_cell in snake.body:
+                                        idx = snake.body.index(target_cell)
+                                        # Don't cut the head or reduce snake below 3 segments
+                                        if idx == 0 or len(snake.body) <= 3:
+                                            break
+                                        # Vaporize from index down to tail
+                                        cut_count = len(snake.body) - idx
+                                        for tail_idx in range(len(snake.body) - 1, idx - 1, -1):
+                                            t_cell = snake.body[tail_idx]
+                                            px = t_cell[0] * V_GRID_SIZE + V_GRID_SIZE//2
+                                            py = t_cell[1] * V_GRID_SIZE + V_HEADER_HEIGHT + V_GRID_SIZE//2
+                                            particles.spawn_explosion(px, py, SNAKE_COLOR, 8)
+                                            snake.body.pop()
+                                        
+                                        play_synth_sound(300, 300, 'noise', 0.25)
+                                        floating_texts.append(FloatingText(f"TAIL CUT -{cut_count}", hx*V_GRID_SIZE, hy*V_GRID_SIZE+V_HEADER_HEIGHT, SNAKE_HEAD_COLOR))
+                                        break
+                                        
+                                    # Map boundaries check
+                                    if target_cell[0] < 0 or target_cell[0] >= COLS or target_cell[1] < 0 or target_cell[1] >= ROWS:
+                                        break
+                                    continue  # Continue to next cell if empty
+                                
+                                break  # Break outer loop after hitting something
                                     
                             # Create visual beam
                             start_px = (hx * V_GRID_SIZE + V_GRID_SIZE//2, hy * V_GRID_SIZE + V_HEADER_HEIGHT + V_GRID_SIZE//2)
                             end_px = (end_cell[0] * V_GRID_SIZE + V_GRID_SIZE//2, end_cell[1] * V_GRID_SIZE + V_HEADER_HEIGHT + V_GRID_SIZE//2)
                             laser_beams.append(LaserBeam(start_px, end_px, (dx, dy)))
                             play_synth_sound(600, 150, 'saw', 0.2)
+                        else:
+                            # No ammo feedback
+                            play_synth_sound(200, 50, 'square', 0.1)
+                            floating_texts.append(FloatingText("NO AMMO!", snake.body[0][0]*V_GRID_SIZE, snake.body[0][1]*V_GRID_SIZE+V_HEADER_HEIGHT, (180, 180, 180)))
                             
                 elif state == STATE_GAMEOVER:
                     if event.key == pygame.K_r:
@@ -913,7 +934,7 @@ def main():
                         food = Food(snake.body)
                         spawned_powerup = None
                         score = 0
-                        laser_ammo = 0
+                        laser_ammo = 3
                         rewind_charges = 1
                         active_powers = {'SHIELD': 0.0, 'SPEED': 0.0, 'SLOW': 0.0, 'GHOST': 0.0, 'MAGNET': 0.0, 'DOUBLE': 0.0, 'TAILSHIELD': 0.0, 'TELEPORT': 0.0}
                         history_buffer = []
@@ -931,6 +952,8 @@ def main():
                         move_obstacle_timer = 0.0
                         difficulty_level = 1
                         screen_shake = ScreenShake()
+                        prev_active_powers = dict(active_powers)
+                        show_help = False
                         play_synth_sound(523, 100, 'sine')
                         play_synth_sound(1046, 250, 'sine')
                     elif event.key == pygame.K_q:
@@ -1670,4 +1693,10 @@ def main():
     sys.exit()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"Game crashed: {e}")
+        import traceback
+        traceback.print_exc()
+        pygame.quit()
