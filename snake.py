@@ -1464,9 +1464,6 @@ def main():
             
             # Subtitle
             font_sub = pygame.font.SysFont("Helvetica", 30, bold=True)
-            draw_text_shadow(surface, "CYBERPUNK EDITION", font_sub, COLOR_SHIELD, 
-                           V_WIDTH // 4 - 140, 260)
-            # Actually draw on virtual_surface
             sub_surf = font_sub.render("CYBERPUNK EDITION", True, COLOR_SHIELD)
             sub_shadow = font_sub.render("CYBERPUNK EDITION", True, (0, 0, 0))
             virtual_surface.blit(sub_shadow, (V_WIDTH // 2 - sub_surf.get_width() // 2 + 3, 243))
