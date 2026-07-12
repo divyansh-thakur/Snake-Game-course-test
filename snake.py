@@ -89,6 +89,11 @@ COLOR_SLOW = (189, 0, 255)        # Purple
 COLOR_SHRINK = (0, 255, 136)      # Green
 COLOR_LASER = (255, 94, 0)        # Orange
 COLOR_REWIND = (255, 0, 127)      # Magenta
+COLOR_GHOST = (180, 180, 255)     # Ghost Blue
+COLOR_MAGNET = (255, 100, 200)    # Pink Magnet
+COLOR_DOUBLE = (255, 215, 0)      # Gold Double Score
+COLOR_TAILSHIELD = (0, 180, 120)  # Teal Tail Shield
+COLOR_TELEPORT = (200, 50, 255)   # Purple Teleport
 
 # --- Map Layouts ---
 MAP_OPEN = 0
@@ -97,6 +102,7 @@ MAP_CROSS = 2
 MAP_MAZE = 3
 selected_map = MAP_OPEN
 obstacles = []
+move_obstacles = []
 
 def build_map(layout_type):
     global obstacles
@@ -330,12 +336,16 @@ class Snake:
     def check_collision(self, active_shield):
         head = self.body[0]
         if active_shield:
-            return False # Shield protects against everything
+            return False # Shield/Ghost protects against everything
         # Wall collision
         if head[0] < 0 or head[0] >= COLS or head[1] < 0 or head[1] >= ROWS:
             return True
         # Obstacle collision
         if head in obstacles:
+            return True
+        # Moving obstacle collision
+        moving_pos = [mo['pos'] for mo in move_obstacles]
+        if head in moving_pos:
             return True
         # Self collision
         if head in self.body[1:]:
@@ -350,12 +360,21 @@ class Snake:
         # Determine skin color
         color_theme = SNAKE_COLOR
         glow_theme = (0, 255, 136)
+        ghost_mode = active_powers.get('GHOST', 0) > 0
+        tail_mode = active_powers.get('TAILSHIELD', 0) > 0
+        double_mode = active_powers.get('DOUBLE', 0) > 0
         if active_powers.get('SHIELD', 0) > 0:
             color_theme = COLOR_SHIELD
             glow_theme = COLOR_SHIELD
         elif active_powers.get('SPEED', 0) > 0:
             color_theme = COLOR_SPEED
             glow_theme = COLOR_SPEED
+        elif ghost_mode:
+            color_theme = COLOR_GHOST
+            glow_theme = COLOR_GHOST
+        elif double_mode:
+            color_theme = COLOR_DOUBLE
+            glow_theme = COLOR_DOUBLE
 
         # 1. Draw shrinking popped tail segment
         if self.was_popped and self.popped_tail_pos:
@@ -392,13 +411,28 @@ class Snake:
             rect = pygame.Rect(px + offset, py + offset, size, size)
 
             # Draw Glow
+            seg_alpha = 100 if ghost_mode else 255
             if i == 0:
-                draw_glow_rect(surface, glow_theme, rect, glow_size=18, alpha=70, border_radius=12)
+                draw_glow_rect(surface, glow_theme, rect, glow_size=18, alpha=70 if not ghost_mode else 40, border_radius=12)
             else:
-                draw_glow_rect(surface, glow_theme, rect, glow_size=8, alpha=25, border_radius=8)
+                draw_glow_rect(surface, glow_theme, rect, glow_size=8, alpha=25 if not ghost_mode else 15, border_radius=8)
 
-            # Draw body block
-            pygame.draw.rect(surface, color_theme, rect, border_radius=int(12 * base_size_mult))
+            # Draw body block with optional transparency for ghost mode
+            if ghost_mode:
+                ghost_surf = pygame.Surface((int(size), int(size)), pygame.SRCALPHA)
+                gc = (*color_theme, seg_alpha)
+                pygame.draw.rect(ghost_surf, gc, (0, 0, int(size), int(size)), border_radius=int(12 * base_size_mult))
+                surface.blit(ghost_surf, (int(px + offset), int(py + offset)))
+            else:
+                pygame.draw.rect(surface, color_theme, rect, border_radius=int(12 * base_size_mult))
+
+            # Tail shield ring on last segment
+            if tail_mode and i == n_curr - 1 and n_curr > 2:
+                ring_r = int(size * 0.6)
+                ring_surf = pygame.Surface((ring_r * 2 + 4, ring_r * 2 + 4), pygame.SRCALPHA)
+                pulse = int(3 * math.sin(time_ticks * 0.01))
+                pygame.draw.circle(ring_surf, (*COLOR_TAILSHIELD, 140), (ring_r + 2, ring_r + 2), ring_r + pulse, 3)
+                surface.blit(ring_surf, (int(px + size // 2 - ring_r - 2), int(py + size // 2 - ring_r - 2)))
 
             # Draw Head Details (Eyes & Shield bubble)
             if i == 0:
@@ -458,12 +492,19 @@ class PowerUp:
     TYPE_SHRINK = 3
     TYPE_LASER = 4
     TYPE_REWIND = 5
+    TYPE_GHOST = 6
+    TYPE_MAGNET = 7
+    TYPE_DOUBLE = 8
+    TYPE_TAILSHIELD = 9
+    TYPE_TELEPORT = 10
+
+    ALL_TYPES = [TYPE_SHIELD, TYPE_SPEED, TYPE_SLOW, TYPE_SHRINK, TYPE_LASER, TYPE_REWIND, TYPE_GHOST, TYPE_MAGNET, TYPE_DOUBLE, TYPE_TAILSHIELD, TYPE_TELEPORT]
 
     def __init__(self, snake_body, food_pos):
-        # Spawns dynamically
-        self.type = random.choice([self.TYPE_SHIELD, self.TYPE_SPEED, self.TYPE_SLOW, self.TYPE_SHRINK, self.TYPE_LASER, self.TYPE_REWIND])
+        self.type = random.choice(self.ALL_TYPES)
         self.position = self.randomize_position(snake_body, food_pos)
-        self.time_left = 10.0 # disappearing countdown
+        self.time_left = 10.0
+        self.spawn_time = pygame.time.get_ticks()
 
     def randomize_position(self, snake_body, food_pos):
         while True:
@@ -483,16 +524,29 @@ class PowerUp:
         label = "SH"
         if self.type == self.TYPE_SPEED: color = COLOR_SPEED; label = "SP"
         elif self.type == self.TYPE_SLOW: color = COLOR_SLOW; label = "SL"
-        elif self.type == self.TYPE_SHRINK: color = COLOR_SHRINK; label = "SC" # Scissors
+        elif self.type == self.TYPE_SHRINK: color = COLOR_SHRINK; label = "SC"
         elif self.type == self.TYPE_LASER: color = COLOR_LASER; label = "LA"
         elif self.type == self.TYPE_REWIND: color = COLOR_REWIND; label = "RE"
+        elif self.type == self.TYPE_GHOST: color = COLOR_GHOST; label = "GH"
+        elif self.type == self.TYPE_MAGNET: color = COLOR_MAGNET; label = "MG"
+        elif self.type == self.TYPE_DOUBLE: color = COLOR_DOUBLE; label = "2X"
+        elif self.type == self.TYPE_TAILSHIELD: color = COLOR_TAILSHIELD; label = "TS"
+        elif self.type == self.TYPE_TELEPORT: color = COLOR_TELEPORT; label = "TP"
+
+        # Spinning ring animation
+        ring_angle = time_ticks * 0.005
+        ring_surf = pygame.Surface((int(size * 2.2), int(size * 2.2)), pygame.SRCALPHA)
+        ring_center = (int(size * 1.1), int(size * 1.1))
+        ring_r = int(size * 0.9)
+        for arc_i in range(3):
+            a_start = ring_angle + arc_i * (2 * math.pi / 3)
+            a_end = a_start + 0.8
+            pygame.draw.arc(ring_surf, (*color, 120), (ring_center[0] - ring_r, ring_center[1] - ring_r, ring_r * 2, ring_r * 2), a_start, a_end, 3)
+        surface.blit(ring_surf, (px - int(size * 1.1), py - int(size * 1.1)))
 
         draw_glow_circle(surface, color, (px, py), int(size // 2), glow_radius=18, alpha=80)
-        
-        # Draw circular frame
         pygame.draw.circle(surface, color, (px, py), int(size // 2), 3)
         
-        # Text symbol label
         font = pygame.font.SysFont("Helvetica", int(size * 0.45), bold=True)
         lbl_surf = font.render(label, True, TEXT_COLOR)
         surface.blit(lbl_surf, (px - lbl_surf.get_width() // 2, py - lbl_surf.get_height() // 2))
@@ -631,9 +685,21 @@ def draw_header(surface, score, high_score, laser_ammo, rewind_charges, active_p
     logo_glow.set_alpha(alpha)
     surface.blit(logo_glow, (V_WIDTH // 2 - logo_glow.get_width() // 2 - 100, 32))
 
+    # Active power indicator strip
+    font_pow = pygame.font.SysFont("Helvetica", 14, bold=True)
+    px_offset = 50
+    power_colors = {'SHIELD': COLOR_SHIELD, 'SPEED': COLOR_SPEED, 'SLOW': COLOR_SLOW, 'GHOST': COLOR_GHOST, 'MAGNET': COLOR_MAGNET, 'DOUBLE': COLOR_DOUBLE, 'TAILSHIELD': COLOR_TAILSHIELD, 'TELEPORT': COLOR_TELEPORT}
+    power_labels = {'SHIELD': 'SH', 'SPEED': 'SP', 'SLOW': 'SL', 'GHOST': 'GH', 'MAGNET': 'MG', 'DOUBLE': '2X', 'TAILSHIELD': 'TS', 'TELEPORT': 'TP'}
+    for key in ['SHIELD', 'SPEED', 'SLOW', 'GHOST', 'MAGNET', 'DOUBLE', 'TAILSHIELD', 'TELEPORT']:
+        if active_powers.get(key, 0) > 0:
+            remaining = int(active_powers[key])
+            lbl = font_pow.render(f"{power_labels[key]} {remaining}s", True, power_colors[key])
+            surface.blit(lbl, (px_offset, V_HEADER_HEIGHT - 18))
+            px_offset += lbl.get_width() + 15
+
 # --- Main Program ---
 def main():
-    global obstacles, selected_map
+    global obstacles, selected_map, move_obstacles
     high_score = 0
     try:
         if os.path.exists("highscore.txt"):
@@ -662,7 +728,22 @@ def main():
     rewind_charges = 1
     
     # Active powers timer counters (seconds)
-    active_powers = {'SHIELD': 0.0, 'SPEED': 0.0, 'SLOW': 0.0}
+    active_powers = {'SHIELD': 0.0, 'SPEED': 0.0, 'SLOW': 0.0, 'GHOST': 0.0, 'MAGNET': 0.0, 'DOUBLE': 0.0, 'TAILSHIELD': 0.0, 'TELEPORT': 0.0}
+    
+    # Combo & Streak system
+    combo_count = 0
+    combo_timer = 0.0
+    streak_best = 0
+    mission_timer = 0.0
+    mission_target = 5
+    mission_food_collected = 0
+    mission_active = False
+    mission_reward = 0
+    
+    # Progressive difficulty
+    difficulty_level = 1
+    move_obstacles = []
+    move_obstacle_timer = 0.0
     
     # Rewinding History Snapshot buffer
     history_buffer = []
@@ -678,6 +759,18 @@ def main():
     font_ui = pygame.font.SysFont("Helvetica", 22)
     font_title = pygame.font.SysFont("Helvetica", 82, bold=True)
     font_btn = pygame.font.SysFont("Helvetica", 36, bold=True)
+
+    def resetDemo():
+        nonlocal snake, food, spawned_powerup, screen_shake, particles, floating_texts, laser_beams, accumulated_time
+        snake = Snake()
+        food = Food(snake.body)
+        spawned_powerup = None
+        screen_shake = ScreenShake()
+        particles = ParticleSystem()
+        floating_texts = []
+        laser_beams = []
+        accumulated_time = 0.0
+        move_obstacles = []
 
     play_synth_sound(440, 150, 'sine')
     play_synth_sound(659, 300, 'sine')
@@ -708,12 +801,22 @@ def main():
                         score = 0
                         laser_ammo = 0
                         rewind_charges = 1
-                        active_powers = {'SHIELD': 0.0, 'SPEED': 0.0, 'SLOW': 0.0}
+                        active_powers = {'SHIELD': 0.0, 'SPEED': 0.0, 'SLOW': 0.0, 'GHOST': 0.0, 'MAGNET': 0.0, 'DOUBLE': 0.0, 'TAILSHIELD': 0.0, 'TELEPORT': 0.0}
                         history_buffer = []
                         particles = ParticleSystem()
                         floating_texts = []
                         laser_beams = []
                         accumulated_time = 0
+                        combo_count = 0
+                        combo_timer = 0.0
+                        streak_best = 0
+                        mission_timer = 0.0
+                        mission_active = False
+                        mission_reward = 0
+                        move_obstacles = []
+                        move_obstacle_timer = 0.0
+                        difficulty_level = 1
+                        screen_shake = ScreenShake()
                     elif event.key == pygame.K_1:
                         selected_map = MAP_OPEN
                         build_map(selected_map)
@@ -804,12 +907,22 @@ def main():
                         score = 0
                         laser_ammo = 0
                         rewind_charges = 1
-                        active_powers = {'SHIELD': 0.0, 'SPEED': 0.0, 'SLOW': 0.0}
+                        active_powers = {'SHIELD': 0.0, 'SPEED': 0.0, 'SLOW': 0.0, 'GHOST': 0.0, 'MAGNET': 0.0, 'DOUBLE': 0.0, 'TAILSHIELD': 0.0, 'TELEPORT': 0.0}
                         history_buffer = []
                         particles = ParticleSystem()
                         floating_texts = []
                         laser_beams = []
                         accumulated_time = 0
+                        combo_count = 0
+                        combo_timer = 0.0
+                        streak_best = 0
+                        mission_timer = 0.0
+                        mission_active = False
+                        mission_reward = 0
+                        move_obstacles = []
+                        move_obstacle_timer = 0.0
+                        difficulty_level = 1
+                        screen_shake = ScreenShake()
                         play_synth_sound(523, 100, 'sine')
                         play_synth_sound(1046, 250, 'sine')
                     elif event.key == pygame.K_q:
@@ -832,17 +945,61 @@ def main():
         # Decrement active powers durations (in seconds)
         active_elapsed = dt / 1000.0
         if active_powers['SLOW'] > 0:
-            active_elapsed *= 0.5 # slow-mo decays slower
+            active_elapsed *= 0.5
 
-        if active_powers['SHIELD'] > 0: active_powers['SHIELD'] = max(0.0, active_powers['SHIELD'] - active_elapsed)
-        if active_powers['SPEED'] > 0: active_powers['SPEED'] = max(0.0, active_powers['SPEED'] - active_elapsed)
-        if active_powers['SLOW'] > 0: active_powers['SLOW'] = max(0.0, active_powers['SLOW'] - active_elapsed)
+        for key in active_powers:
+            if active_powers[key] > 0:
+                active_powers[key] = max(0.0, active_powers[key] - active_elapsed)
 
         # Decay spawned powerup timer on board
         if spawned_powerup:
             spawned_powerup.time_left -= dt / 1000.0
             if spawned_powerup.time_left <= 0:
                 spawned_powerup = None
+
+        # Combo timer decay
+        if combo_timer > 0:
+            combo_timer -= dt / 1000.0
+            if combo_timer <= 0:
+                combo_count = 0
+
+        # Progressive difficulty
+        if state == STATE_PLAY and score > 0:
+            new_level = 1 + score // 1000
+            if new_level > difficulty_level:
+                difficulty_level = new_level
+                # Spawn moving obstacles based on difficulty
+                num_movers = min(difficulty_level, 5)
+                move_obstacles = []
+                for _ in range(num_movers):
+                    pos = (random.randint(3, COLS - 4), random.randint(3, ROWS - 4))
+                    if pos not in obstacles and pos not in snake.body:
+                        move_obstacles.append({'pos': pos, 'dir': random.choice([(0, -1), (0, 1), (-1, 0), (1, 0)]), 'timer': 0.0})
+                floating_texts.append(FloatingText(f"LEVEL {difficulty_level}!", V_WIDTH // 2, V_HEADER_HEIGHT + 200, COLOR_SPEED))
+
+        # Move obstacles movement
+        move_obstacle_timer += dt / 1000.0
+        if move_obstacle_timer >= 0.5 and state == STATE_PLAY:
+            move_obstacle_timer = 0.0
+            for mo in move_obstacles:
+                old_pos = mo['pos']
+                dx, dy = mo['dir']
+                new_pos = (old_pos[0] + dx, old_pos[1] + dy)
+                if new_pos[0] < 1 or new_pos[0] >= COLS - 1 or new_pos[1] < 1 or new_pos[1] >= ROWS - 1 or new_pos in obstacles:
+                    mo['dir'] = random.choice([(0, -1), (0, 1), (-1, 0), (1, 0)])
+                else:
+                    mo['pos'] = new_pos
+
+        # Mission system - spawn timed missions
+        if state == STATE_PLAY and not mission_active and score > 0:
+            mission_timer += dt / 1000.0
+            if mission_timer >= 15.0:
+                mission_timer = 0.0
+                mission_active = True
+                mission_target = random.randint(3, 7)
+                mission_food_collected = 0
+                mission_reward = mission_target * 150
+                floating_texts.append(FloatingText(f"MISSION: Eat {mission_target} food!", V_WIDTH // 2, V_HEADER_HEIGHT + 50, COLOR_DOUBLE))
 
         # --- Rewind History Recording ---
         if state == STATE_PLAY:
@@ -947,8 +1104,8 @@ def main():
                 elif state == STATE_PLAY:
                     next_head = (snake.body[0][0] + snake.direction[0], snake.body[0][1] + snake.direction[1])
                     
-                    # Wrap around boundaries if Shield active
-                    if active_powers['SHIELD'] > 0:
+                    # Wrap around boundaries if Shield or Ghost active
+                    if active_powers['SHIELD'] > 0 or active_powers['GHOST'] > 0:
                         nx, ny = next_head
                         if nx < 0: nx = COLS - 1
                         elif nx >= COLS: nx = 0
@@ -956,25 +1113,61 @@ def main():
                         elif ny >= ROWS: ny = 0
                         next_head = (nx, ny)
 
+                    # Magnet: attract food closer to snake head
+                    if active_powers['MAGNET'] > 0:
+                        hx, hy = snake.body[0]
+                        fx, fy = food.position
+                        dist = abs(hx - fx) + abs(hy - fy)
+                        if dist <= 8:
+                            if fx < hx: fx += 1
+                            elif fx > hx: fx -= 1
+                            if fy < hy: fy += 1
+                            elif fy > hy: fy -= 1
+                            new_food_pos = (max(0, min(COLS - 1, fx)), max(0, min(ROWS - 1, fy)))
+                            if new_food_pos not in snake.body and new_food_pos not in obstacles:
+                                food.position = new_food_pos
+
                     eating = (next_head == food.position)
                     collecting = spawned_powerup and (next_head == spawned_powerup.position)
                     
                     snake.move(eating or collecting)
                     
                     if eating:
-                        add_pts = 100 if active_powers['SPEED'] <= 0 else 200
-                        score += add_pts
+                        base_pts = 100
+                        if active_powers['SPEED'] > 0: base_pts = 200
+                        if active_powers['DOUBLE'] > 0: base_pts *= 2
+                        # Combo multiplier
+                        combo_count += 1
+                        combo_timer = 2.0
+                        if combo_count >= 3:
+                            base_pts = int(base_pts * (1 + combo_count * 0.25))
+                        if combo_count > streak_best:
+                            streak_best = combo_count
+                        score += base_pts
                         
                         px = food.position[0] * V_GRID_SIZE + V_GRID_SIZE // 2
                         py = food.position[1] * V_GRID_SIZE + V_HEADER_HEIGHT + V_GRID_SIZE // 2
                         particles.spawn_explosion(px, py, FOOD_COLOR, 20)
                         screen_shake.trigger(duration=6, intensity=4)
-                        floating_texts.append(FloatingText(f"+{add_pts}", px, py - 20, COLOR_SPEED if active_powers['SPEED'] > 0 else COLOR_SHIELD))
+                        
+                        combo_text = f" x{combo_count}" if combo_count >= 3 else ""
+                        floating_texts.append(FloatingText(f"+{base_pts}{combo_text}", px, py - 20, COLOR_DOUBLE if active_powers['DOUBLE'] > 0 else (COLOR_SPEED if active_powers['SPEED'] > 0 else COLOR_SHIELD)))
                         
                         play_synth_sound(659, 60, 'sine')
                         play_synth_sound(880, 100, 'sine')
                         
                         food = Food(snake.body)
+                        
+                        # Mission tracking
+                        if mission_active:
+                            mission_food_collected += 1
+                            if mission_food_collected >= mission_target:
+                                score += mission_reward
+                                floating_texts.append(FloatingText(f"MISSION COMPLETE +{mission_reward}", V_WIDTH // 2, V_HEADER_HEIGHT + 100, COLOR_DOUBLE))
+                                play_synth_sound(800, 100, 'sine')
+                                play_synth_sound(1000, 100, 'sine')
+                                play_synth_sound(1200, 200, 'sine')
+                                mission_active = False
                         
                         # Probabilistically spawn a powerup item
                         if random.random() < 0.28:
@@ -988,37 +1181,79 @@ def main():
                         py = next_head[1] * V_GRID_SIZE + V_HEADER_HEIGHT + V_GRID_SIZE // 2
                         
                         if power_type == PowerUp.TYPE_SHRINK:
-                            # Scissors Tail Cut powerup
-                            sounds['shrinkPop']()
+                            play_synth_sound(880, 120, 'sine')
+                            play_synth_sound(440, 150, 'sine')
                             particles.spawn_explosion(px, py, COLOR_SHRINK, 25)
                             cut_len = max(3, int(len(snake.body) * 0.7))
                             cut_diff = len(snake.body) - cut_len
                             while len(snake.body) > cut_len:
                                 snake.body.pop()
-                            floating_texts.append(FloatingText(f"SHRINK TAIL -{cut_diff}", px, py - 25, COLOR_SHRINK))
+                            floating_texts.append(FloatingText(f"SHRINK -{cut_diff}", px, py - 25, COLOR_SHRINK))
                         elif power_type == PowerUp.TYPE_LASER:
-                            # Ammo battery powerup
                             play_synth_sound(600, 200, 'saw')
                             particles.spawn_explosion(px, py, COLOR_LASER, 20)
                             laser_ammo += 3
-                            floating_texts.append(FloatingText("+3 LASER AMMO 🔋", px, py - 25, COLOR_LASER))
+                            floating_texts.append(FloatingText("+3 LASER", px, py - 25, COLOR_LASER))
                         elif power_type == PowerUp.TYPE_REWIND:
-                            # Chronos Hourglass rewind powerup
                             play_synth_sound(500, 250, 'sine')
                             particles.spawn_explosion(px, py, COLOR_REWIND, 20)
                             rewind_charges += 1
-                            floating_texts.append(FloatingText("+1 TIME CHARGE ⌛", px, py - 25, COLOR_REWIND))
-                        else:
-                            # Shield, Speed, Slow-mo timers
+                            floating_texts.append(FloatingText("+1 REWIND", px, py - 25, COLOR_REWIND))
+                        elif power_type == PowerUp.TYPE_SHIELD:
                             play_synth_sound(587, 200, 'sine')
-                            label = "SHIELD" if power_type == PowerUp.TYPE_SHIELD else ("SPEED" if power_type == PowerUp.TYPE_SPEED else "SLOW-MO")
-                            color = COLOR_SHIELD if power_type == PowerUp.TYPE_SHIELD else (COLOR_SPEED if power_type == PowerUp.TYPE_SPEED else COLOR_SLOW)
-                            active_powers[label] = 8.0 # active for 8 seconds
-                            particles.spawn_explosion(px, py, color, 25)
-                            floating_texts.append(FloatingText(f"{label} ACTIVE", px, py - 25, color))
+                            active_powers['SHIELD'] = 8.0
+                            particles.spawn_explosion(px, py, COLOR_SHIELD, 25)
+                            floating_texts.append(FloatingText("SHIELD ON", px, py - 25, COLOR_SHIELD))
+                        elif power_type == PowerUp.TYPE_SPEED:
+                            play_synth_sound(587, 200, 'sine')
+                            active_powers['SPEED'] = 8.0
+                            particles.spawn_explosion(px, py, COLOR_SPEED, 25)
+                            floating_texts.append(FloatingText("SPEED UP", px, py - 25, COLOR_SPEED))
+                        elif power_type == PowerUp.TYPE_SLOW:
+                            play_synth_sound(587, 200, 'sine')
+                            active_powers['SLOW'] = 8.0
+                            particles.spawn_explosion(px, py, COLOR_SLOW, 25)
+                            floating_texts.append(FloatingText("SLOW-MO", px, py - 25, COLOR_SLOW))
+                        elif power_type == PowerUp.TYPE_GHOST:
+                            play_synth_sound(700, 300, 'sine')
+                            active_powers['GHOST'] = 8.0
+                            particles.spawn_explosion(px, py, COLOR_GHOST, 30)
+                            floating_texts.append(FloatingText("GHOST MODE", px, py - 25, COLOR_GHOST))
+                        elif power_type == PowerUp.TYPE_MAGNET:
+                            play_synth_sound(450, 250, 'sine')
+                            active_powers['MAGNET'] = 8.0
+                            particles.spawn_explosion(px, py, COLOR_MAGNET, 30)
+                            floating_texts.append(FloatingText("MAGNET ON", px, py - 25, COLOR_MAGNET))
+                        elif power_type == PowerUp.TYPE_DOUBLE:
+                            play_synth_sound(800, 200, 'sine')
+                            active_powers['DOUBLE'] = 8.0
+                            particles.spawn_explosion(px, py, COLOR_DOUBLE, 30)
+                            floating_texts.append(FloatingText("2X SCORE", px, py - 25, COLOR_DOUBLE))
+                        elif power_type == PowerUp.TYPE_TAILSHIELD:
+                            play_synth_sound(520, 250, 'sine')
+                            active_powers['TAILSHIELD'] = 8.0
+                            particles.spawn_explosion(px, py, COLOR_TAILSHIELD, 30)
+                            floating_texts.append(FloatingText("TAIL GUARD", px, py - 25, COLOR_TAILSHIELD))
+                        elif power_type == PowerUp.TYPE_TELEPORT:
+                            play_synth_sound(900, 150, 'sine')
+                            play_synth_sound(300, 200, 'sine')
+                            particles.spawn_explosion(px, py, COLOR_TELEPORT, 30)
+                            snake.body = [(random.randint(2, COLS - 3), random.randint(2, ROWS - 3))]
+                            snake.prev_body = list(snake.body)
+                            snake.direction = random.choice([(0, -1), (0, 1), (-1, 0), (1, 0)])
+                            floating_texts.append(FloatingText("TELEPORT!", px, py - 25, COLOR_TELEPORT))
 
                     # Crash checking
-                    if snake.check_collision(active_shield=(active_powers['SHIELD'] > 0)):
+                    is_invuln = (active_powers['SHIELD'] > 0 or active_powers['GHOST'] > 0)
+                    crashed = snake.check_collision(active_shield=is_invuln)
+                    # Tail shield protects against self-collision only
+                    if crashed and active_powers['TAILSHIELD'] > 0:
+                        head = snake.body[0]
+                        if head in obstacles or head[0] < 0 or head[0] >= COLS or head[1] < 0 or head[1] >= ROWS:
+                            crashed = True
+                        else:
+                            crashed = False
+                    if crashed:
                         if rewind_charges > 0:
                             # Play trigger chime, enter Rewind Prompt screen instead of immediate death
                             state = STATE_REWIND_PROMPT
@@ -1036,7 +1271,7 @@ def main():
                                     pass
                             
                             state = STATE_GAMEOVER
-                            screen_shake.trigger(duration=25, intensity=12)
+                            screen_shake.trigger(duration=15, intensity=6)
                             hx = snake.body[0][0] * V_GRID_SIZE + V_GRID_SIZE // 2
                             hy = snake.body[0][1] * V_GRID_SIZE + V_HEADER_HEIGHT + V_GRID_SIZE // 2
                             particles.spawn_explosion(hx, hy, (255, 50, 50), 30)
@@ -1044,6 +1279,7 @@ def main():
 
         # --- Frames update (60 FPS) ---
         particles.update()
+        screen_shake.update()
         for ft in floating_texts: ft.update()
         floating_texts = [ft for ft in floating_texts if ft.alpha > 0]
         
@@ -1066,6 +1302,23 @@ def main():
             # Inner core block
             pygame.draw.rect(virtual_surface, OBSTACLE_COLOR, rect, border_radius=8)
             pygame.draw.rect(virtual_surface, (255, 230, 0), rect, width=2, border_radius=8)
+
+        # Draw moving obstacles
+        for mo in move_obstacles:
+            mx, my = mo['pos']
+            mpx = mx * V_GRID_SIZE
+            mpy = my * V_GRID_SIZE + V_HEADER_HEIGHT
+            mrect = pygame.Rect(mpx + 2, mpy + 2, V_GRID_SIZE - 4, V_GRID_SIZE - 4)
+            pulse = int(2 * math.sin(current_ticks * 0.01))
+            draw_glow_rect(virtual_surface, (255, 50, 50), mrect, glow_size=10 + pulse, alpha=50, border_radius=8)
+            pygame.draw.rect(virtual_surface, (255, 50, 50), mrect, border_radius=8)
+            pygame.draw.rect(virtual_surface, (255, 150, 100), mrect, width=2, border_radius=8)
+
+        # Draw mission indicator
+        if mission_active:
+            mission_font = pygame.font.SysFont("Helvetica", 18, bold=True)
+            mission_txt = mission_font.render(f"MISSION: {mission_food_collected}/{mission_target}", True, COLOR_DOUBLE)
+            virtual_surface.blit(mission_txt, (V_WIDTH // 2 - mission_txt.get_width() // 2, V_HEADER_HEIGHT + 8))
 
         # Draw Food & Powerup
         food.draw(virtual_surface, current_ticks)
@@ -1119,11 +1372,15 @@ def main():
             
             # Manual controls
             ctrl_1 = font_ui.render("STEER :  W A S D  or  ARROW KEYS", True, TEXT_COLOR)
-            ctrl_2 = font_ui.render("LASER CANNON :  SPACE BAR (clears obstacles and cuts tail)", True, COLOR_LASER)
-            ctrl_3 = font_ui.render("TIME REWIND :  BACKSPACE (rewinds clock on crash)", True, COLOR_REWIND)
-            virtual_surface.blit(ctrl_1, (V_WIDTH // 2 - ctrl_1.get_width() // 2, 850))
-            virtual_surface.blit(ctrl_2, (V_WIDTH // 2 - ctrl_2.get_width() // 2, 910))
-            virtual_surface.blit(ctrl_3, (V_WIDTH // 2 - ctrl_3.get_width() // 2, 970))
+            ctrl_2 = font_ui.render("LASER : SPACE (clears obstacles & cuts tail)", True, COLOR_LASER)
+            ctrl_3 = font_ui.render("REWIND : BACKSPACE (rewind on crash)", True, COLOR_REWIND)
+            ctrl_4 = font_ui.render("11 POWER-UPS : Shield, Speed, Slow, Ghost, Magnet, 2X Score...", True, COLOR_GHOST)
+            ctrl_5 = font_ui.render("MISSIONS & COMBOS for bonus score! Progressive difficulty!", True, COLOR_DOUBLE)
+            virtual_surface.blit(ctrl_1, (V_WIDTH // 2 - ctrl_1.get_width() // 2, 830))
+            virtual_surface.blit(ctrl_2, (V_WIDTH // 2 - ctrl_2.get_width() // 2, 880))
+            virtual_surface.blit(ctrl_3, (V_WIDTH // 2 - ctrl_3.get_width() // 2, 930))
+            virtual_surface.blit(ctrl_4, (V_WIDTH // 2 - ctrl_4.get_width() // 2, 990))
+            virtual_surface.blit(ctrl_5, (V_WIDTH // 2 - ctrl_5.get_width() // 2, 1040))
 
         elif state == STATE_REWIND_PROMPT:
             overlay = pygame.Surface((V_WIDTH, V_HEIGHT), pygame.SRCALPHA)
@@ -1188,9 +1445,6 @@ def main():
 
     pygame.quit()
     sys.exit()
-
-def resetDemo():
-    pass # Hook for screensaver resets in event handlers
 
 if __name__ == "__main__":
     main()
