@@ -159,6 +159,12 @@ def draw_glow_circle(surface, color, center, radius, glow_radius, alpha=50):
         pygame.draw.circle(glow_surf, (*color, a), (r, r), r)
         surface.blit(glow_surf, (center[0] - r, center[1] - r))
 
+def draw_text_shadow(surface, text, font, color, x, y, shadow_color=(0, 0, 0), shadow_offset=3):
+    shadow = font.render(text, True, shadow_color)
+    surface.blit(shadow, (x + shadow_offset, y + shadow_offset))
+    main = font.render(text, True, color)
+    surface.blit(main, (x, y))
+
 def render_glowing_text(text, font, color, glow_color, glow_size=4):
     text_surf = font.render(text, True, color)
     w, h = text_surf.get_width(), text_surf.get_height()
@@ -245,6 +251,12 @@ class FloatingText:
 
     def draw(self, surface, font):
         if self.alpha > 0:
+            shadow = font.render(self.text, True, (0, 0, 0))
+            alpha_shadow = pygame.Surface(shadow.get_size(), pygame.SRCALPHA)
+            alpha_shadow.fill((255, 255, 255, int(self.alpha)))
+            shadow.blit(alpha_shadow, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            surface.blit(shadow, (int(self.x - shadow.get_width() / 2) + 3, int(self.y) + 3))
+            
             text_surf = font.render(self.text, True, self.color)
             alpha_surf = pygame.Surface(text_surf.get_size(), pygame.SRCALPHA)
             alpha_surf.fill((255, 255, 255, int(self.alpha)))
@@ -467,9 +479,10 @@ class Food:
         self.position = self.randomize_position(snake_body)
 
     def randomize_position(self, snake_body):
+        moving_positions = [mo['pos'] for mo in move_obstacles]
         while True:
             pos = (random.randint(0, COLS - 1), random.randint(0, ROWS - 1))
-            if pos not in snake_body and pos not in obstacles:
+            if pos not in snake_body and pos not in obstacles and pos not in moving_positions:
                 return pos
 
     def draw(self, surface, time_ticks):
@@ -507,9 +520,10 @@ class PowerUp:
         self.spawn_time = pygame.time.get_ticks()
 
     def randomize_position(self, snake_body, food_pos):
+        moving_positions = [mo['pos'] for mo in move_obstacles]
         while True:
             pos = (random.randint(0, COLS - 1), random.randint(0, ROWS - 1))
-            if pos not in snake_body and pos not in obstacles and pos != food_pos:
+            if pos not in snake_body and pos not in obstacles and pos not in moving_positions and pos != food_pos:
                 return pos
 
     def draw(self, surface, time_ticks):
@@ -615,7 +629,7 @@ def draw_retro_sun(surface, time_ticks, alpha_mul=1.0):
 
 def draw_perspective_grid(surface, time_ticks):
     grid_surf = pygame.Surface((V_WIDTH, V_HEIGHT), pygame.SRCALPHA)
-    color = (0, 240, 255, 16)
+    color = (0, 180, 200, 10)
     
     horizon_y = V_HEIGHT // 2 + 100
     cx = V_WIDTH // 2
@@ -624,6 +638,8 @@ def draw_perspective_grid(surface, time_ticks):
     num_lines = 16
     for i in range(num_lines + 1):
         t = i / num_lines
+        if abs(t - 0.5) < 0.001:
+            continue  # Skip center vertical line
         sx = cx + (t - 0.5) * 200
         ex = cx + (t - 0.5) * 2200
         pygame.draw.line(grid_surf, color, (sx, horizon_y), (ex, V_HEIGHT), 2)
@@ -652,34 +668,26 @@ def draw_static_grid(surface, time_ticks):
 # --- HUD Header Panel ---
 def draw_header(surface, score, high_score, laser_ammo, rewind_charges, active_powers, time_ticks):
     header_surf = pygame.Surface((V_WIDTH, V_HEADER_HEIGHT), pygame.SRCALPHA)
-    pygame.draw.rect(header_surf, (16, 12, 32, 230), (0, 0, V_WIDTH, V_HEADER_HEIGHT))
-    pygame.draw.line(header_surf, (0, 240, 255, 180), (0, V_HEADER_HEIGHT - 4), (V_WIDTH, V_HEADER_HEIGHT - 4), 4)
+    pygame.draw.rect(header_surf, (16, 12, 32, 240), (0, 0, V_WIDTH, V_HEADER_HEIGHT))
+    pygame.draw.line(header_surf, (0, 240, 255, 200), (0, V_HEADER_HEIGHT - 4), (V_WIDTH, V_HEADER_HEIGHT - 4), 4)
     surface.blit(header_surf, (0, 0))
     
-    font_lbl = pygame.font.SysFont("Helvetica", 20, bold=True)
-    font_val = pygame.font.SysFont("Helvetica", 36, bold=True)
+    font_lbl = pygame.font.SysFont("Helvetica", 22, bold=True)
+    font_val = pygame.font.SysFont("Helvetica", 40, bold=True)
     
-    # Render Scores
-    score_lbl = font_lbl.render("SCORE", True, (0, 240, 255))
-    score_val = font_val.render(f"{score:04d}", True, TEXT_COLOR)
-    surface.blit(score_lbl, (50, 20))
-    surface.blit(score_val, (50, 48))
+    # Render Scores with shadows
+    draw_text_shadow(surface, "SCORE", font_lbl, (0, 240, 255), 50, 18)
+    draw_text_shadow(surface, f"{score:04d}", font_val, (255, 255, 255), 50, 42)
     
-    high_lbl = font_lbl.render("HIGH SCORE", True, (255, 215, 0))
-    high_val = font_val.render(f"{high_score:04d}", True, TEXT_COLOR)
-    surface.blit(high_lbl, (V_WIDTH - high_lbl.get_width() - 50, 20))
-    surface.blit(high_val, (V_WIDTH - high_val.get_width() - 50, 48))
+    draw_text_shadow(surface, "HIGH SCORE", font_lbl, (255, 215, 0), V_WIDTH - 280, 18)
+    draw_text_shadow(surface, f"{high_score:04d}", font_val, (255, 255, 255), V_WIDTH - 180, 42)
     
-    # Laser Ammo & Rewind Status Indicators
-    ammo_lbl = font_lbl.render("PLASMA AMMO", True, COLOR_LASER)
-    ammo_val = font_val.render(f"🔋 x{laser_ammo}", True, TEXT_COLOR)
-    surface.blit(ammo_lbl, (350, 20))
-    surface.blit(ammo_val, (350, 48))
+    # Laser Ammo & Rewind Status
+    draw_text_shadow(surface, "PLASMA", font_lbl, COLOR_LASER, 350, 18)
+    draw_text_shadow(surface, f"x{laser_ammo}", font_val, (255, 255, 255), 370, 42)
 
-    rewind_lbl = font_lbl.render("TIME CHARGE", True, COLOR_REWIND)
-    rewind_val = font_val.render(f"⌛ x{rewind_charges}", True, TEXT_COLOR)
-    surface.blit(rewind_lbl, (600, 20))
-    surface.blit(rewind_val, (600, 48))
+    draw_text_shadow(surface, "REWIND", font_lbl, COLOR_REWIND, 600, 18)
+    draw_text_shadow(surface, f"x{rewind_charges}", font_val, (255, 255, 255), 620, 42)
 
     # Glowing pulsing Logo
     font_logo = pygame.font.SysFont("Helvetica", 38, bold=True)
@@ -687,18 +695,6 @@ def draw_header(surface, score, high_score, laser_ammo, rewind_charges, active_p
     alpha = int(140 + 70 * math.sin(time_ticks * 0.005))
     logo_glow.set_alpha(alpha)
     surface.blit(logo_glow, (V_WIDTH // 2 - logo_glow.get_width() // 2 - 100, 32))
-
-    # Active power indicator strip
-    font_pow = pygame.font.SysFont("Helvetica", 14, bold=True)
-    px_offset = 50
-    power_colors = {'SHIELD': COLOR_SHIELD, 'SPEED': COLOR_SPEED, 'SLOW': COLOR_SLOW, 'GHOST': COLOR_GHOST, 'MAGNET': COLOR_MAGNET, 'DOUBLE': COLOR_DOUBLE, 'TAILSHIELD': COLOR_TAILSHIELD, 'TELEPORT': COLOR_TELEPORT}
-    power_labels = {'SHIELD': 'SH', 'SPEED': 'SP', 'SLOW': 'SL', 'GHOST': 'GH', 'MAGNET': 'MG', 'DOUBLE': '2X', 'TAILSHIELD': 'TS', 'TELEPORT': 'TP'}
-    for key in ['SHIELD', 'SPEED', 'SLOW', 'GHOST', 'MAGNET', 'DOUBLE', 'TAILSHIELD', 'TELEPORT']:
-        if active_powers.get(key, 0) > 0:
-            remaining = int(active_powers[key])
-            lbl = font_pow.render(f"{power_labels[key]} {remaining}s", True, power_colors[key])
-            surface.blit(lbl, (px_offset, V_HEADER_HEIGHT - 18))
-            px_offset += lbl.get_width() + 15
 
 # --- Main Program ---
 def main():
@@ -763,9 +759,9 @@ def main():
     virtual_surface = pygame.Surface((V_WIDTH, V_HEIGHT))
     
     # HUD fonts
-    font_ui = pygame.font.SysFont("Helvetica", 22)
-    font_title = pygame.font.SysFont("Helvetica", 82, bold=True)
-    font_btn = pygame.font.SysFont("Helvetica", 36, bold=True)
+    font_ui = pygame.font.SysFont("Helvetica", 26, bold=True)
+    font_title = pygame.font.SysFont("Helvetica", 96, bold=True)
+    font_btn = pygame.font.SysFont("Helvetica", 42, bold=True)
 
     def resetDemo():
         nonlocal snake, food, spawned_powerup, screen_shake, particles, floating_texts, laser_beams, accumulated_time
@@ -1314,8 +1310,6 @@ def main():
 
         # --- Draw scene to 2x High-Res Virtual Surface ---
         virtual_surface.fill(BG_COLOR)
-        sun_alpha = 1.0 if state == STATE_START else 0.07
-        draw_retro_sun(virtual_surface, current_ticks, sun_alpha)
         draw_perspective_grid(virtual_surface, current_ticks)
         draw_static_grid(virtual_surface, current_ticks)
         
@@ -1373,9 +1367,9 @@ def main():
             power_info = [
                 ('SHIELD', 'INVINCIBLE', COLOR_SHIELD),
                 ('SPEED', 'SPEED x1.7', COLOR_SPEED),
-                ('SLOW', 'SLOW-MO x0.5', COLOR_SLOW),
-                ('GHOST', 'GHOST - PASS THRU', COLOR_GHOST),
-                ('MAGNET', 'MAGNET - ATTRACTS', COLOR_MAGNET),
+                ('SLOW', 'SLOW-MO', COLOR_SLOW),
+                ('GHOST', 'GHOST', COLOR_GHOST),
+                ('MAGNET', 'MAGNET', COLOR_MAGNET),
                 ('DOUBLE', '2X SCORE', COLOR_DOUBLE),
                 ('TAILSHIELD', 'TAIL GUARD', COLOR_TAILSHIELD),
                 ('TELEPORT', 'TELEPORT', COLOR_TELEPORT),
@@ -1385,139 +1379,205 @@ def main():
                     active_power_list.append((label, color, active_powers[key]))
             
             if active_power_list:
-                bar_h = 32
-                total_h = bar_h + 8
+                bar_h = 40
+                total_h = bar_h + 12
                 overlay_bar = pygame.Surface((V_WIDTH, total_h), pygame.SRCALPHA)
-                overlay_bar.fill((0, 0, 0, 160))
+                overlay_bar.fill((0, 0, 0, 180))
                 virtual_surface.blit(overlay_bar, (0, V_HEIGHT - total_h))
                 
-                font_power = pygame.font.SysFont("Helvetica", 20, bold=True)
+                font_power = pygame.font.SysFont("Helvetica", 24, bold=True)
+                font_power_time = pygame.font.SysFont("Helvetica", 22, bold=True)
                 px_pos = 20
                 for label, color, time_left in active_power_list:
                     # Timer bar
                     max_time = 8.0
-                    bar_width = 120
+                    bar_width = 140
                     fill_width = int(bar_width * min(time_left / max_time, 1.0))
-                    bar_rect = pygame.Rect(px_pos, V_HEIGHT - bar_h + 4, bar_width, bar_h - 12)
-                    pygame.draw.rect(virtual_surface, (40, 40, 40), bar_rect, border_radius=4)
+                    bar_rect = pygame.Rect(px_pos, V_HEIGHT - bar_h + 8, bar_width, bar_h - 16)
+                    pygame.draw.rect(virtual_surface, (50, 50, 50), bar_rect, border_radius=4)
                     if fill_width > 0:
-                        fill_rect = pygame.Rect(px_pos, V_HEIGHT - bar_h + 4, fill_width, bar_h - 12)
+                        fill_rect = pygame.Rect(px_pos, V_HEIGHT - bar_h + 8, fill_width, bar_h - 16)
                         pygame.draw.rect(virtual_surface, color, fill_rect, border_radius=4)
                     pygame.draw.rect(virtual_surface, (200, 200, 200), bar_rect, width=1, border_radius=4)
                     
                     lbl_surf = font_power.render(label, True, color)
-                    virtual_surface.blit(lbl_surf, (px_pos, V_HEIGHT - bar_h - 2))
+                    lbl_shadow = font_power.render(label, True, (0, 0, 0))
+                    virtual_surface.blit(lbl_shadow, (px_pos + 1, V_HEIGHT - bar_h + 3))
+                    virtual_surface.blit(lbl_surf, (px_pos, V_HEIGHT - bar_h))
                     
-                    time_text = font_power.render(f"{int(time_left)}s", True, TEXT_COLOR)
-                    virtual_surface.blit(time_text, (px_pos + bar_width + 5, V_HEIGHT - bar_h + 2))
+                    time_text = font_power_time.render(f"{int(time_left)}s", True, (255, 255, 255))
+                    virtual_surface.blit(time_text, (px_pos + bar_width + 8, V_HEIGHT - bar_h + 8))
                     
-                    px_pos += bar_width + 5 + time_text.get_width() + 30
+                    px_pos += bar_width + 8 + time_text.get_width() + 40
 
         # --- Help Screen Overlay ---
         if show_help and state == STATE_PLAY:
             help_overlay = pygame.Surface((V_WIDTH, V_HEIGHT), pygame.SRCALPHA)
-            help_overlay.fill((5, 3, 12, 220))
+            help_overlay.fill((5, 3, 12, 230))
             virtual_surface.blit(help_overlay, (0, 0))
             
-            font_help_title = pygame.font.SysFont("Helvetica", 48, bold=True)
-            font_help = pygame.font.SysFont("Helvetica", 22)
-            font_help_sm = pygame.font.SysFont("Helvetica", 18)
+            font_help_title = pygame.font.SysFont("Helvetica", 52, bold=True)
+            font_help = pygame.font.SysFont("Helvetica", 28, bold=True)
+            font_help_sm = pygame.font.SysFont("Helvetica", 24)
             
-            ht = render_glowing_text("POWER-UP GUIDE", font_help_title, FOOD_COLOR, COLOR_REWIND, glow_size=4)
-            virtual_surface.blit(ht, (V_WIDTH // 2 - ht.get_width() // 2, 100))
+            ht = render_glowing_text("POWER-UP GUIDE", font_help_title, (255, 255, 255), COLOR_REWIND, glow_size=6)
+            virtual_surface.blit(ht, (V_WIDTH // 2 - ht.get_width() // 2, 80))
             
             guide = [
-                ("SHIELD  [SH]", "Invincible + wall wrap for 8s", COLOR_SHIELD),
-                ("SPEED  [SP]", "Move 1.7x faster, 2x score for 8s", COLOR_SPEED),
-                ("SLOW-MO  [SL]", "Half speed to dodge obstacles for 8s", COLOR_SLOW),
-                ("SCISSORS  [SC]", "Cuts 30% of your tail instantly", COLOR_SHRINK),
-                ("PLASMA  [LA]", "+3 laser shots. SPACE to fire", COLOR_LASER),
-                ("REWIND  [RE]", "+1 time charge. BACKSPACE on crash", COLOR_REWIND),
-                ("GHOST  [GH]", "Pass through walls & obstacles for 8s", COLOR_GHOST),
-                ("MAGNET  [MG]", "Food attracted to your head for 8s", COLOR_MAGNET),
-                ("2X SCORE  [2X]", "Double all points for 8s", COLOR_DOUBLE),
-                ("TAIL GUARD  [TS]", "Protects from self-collision for 8s", COLOR_TAILSHIELD),
-                ("TELEPORT  [TP]", "Instantly warp to safe spot", COLOR_TELEPORT),
+                ("SHIELD", "Invincible + wall wrap for 8s", COLOR_SHIELD),
+                ("SPEED", "Move 1.7x faster, 2x score for 8s", COLOR_SPEED),
+                ("SLOW-MO", "Half speed to dodge obstacles for 8s", COLOR_SLOW),
+                ("SCISSORS", "Cuts 30% of your tail instantly", COLOR_SHRINK),
+                ("PLASMA", "+3 laser shots. SPACE to fire", COLOR_LASER),
+                ("REWIND", "+1 time charge. BACKSPACE on crash", COLOR_REWIND),
+                ("GHOST", "Pass through walls & obstacles for 8s", COLOR_GHOST),
+                ("MAGNET", "Food attracted to your head for 8s", COLOR_MAGNET),
+                ("2X SCORE", "Double all points for 8s", COLOR_DOUBLE),
+                ("TAIL GUARD", "Protects from self-collision for 8s", COLOR_TAILSHIELD),
+                ("TELEPORT", "Instantly warp to safe spot", COLOR_TELEPORT),
             ]
             
             y = 180
             for name, desc, color in guide:
                 nm = font_help.render(name, True, color)
-                ds = font_help_sm.render(desc, True, TEXT_COLOR)
-                virtual_surface.blit(nm, (120, y))
-                virtual_surface.blit(ds, (520, y + 2))
-                y += 38
+                ds = font_help_sm.render(desc, True, (200, 200, 210))
+                nm_shadow = font_help.render(name, True, (0, 0, 0))
+                virtual_surface.blit(nm_shadow, (112, y + 2))
+                virtual_surface.blit(nm, (110, y))
+                virtual_surface.blit(ds, (500, y + 3))
+                y += 44
             
-            hint = font_help_sm.render("Press [H] to close", True, (150, 150, 150))
+            hint = font_help_sm.render("Press H to close", True, (180, 180, 190))
+            hint_shadow = font_help_sm.render("Press H to close", True, (0, 0, 0))
+            virtual_surface.blit(hint_shadow, (V_WIDTH // 2 - hint.get_width() // 2 + 2, V_HEIGHT - 58))
             virtual_surface.blit(hint, (V_WIDTH // 2 - hint.get_width() // 2, V_HEIGHT - 60))
 
         # Draw Overlays on virtual surface
         if state == STATE_START:
             overlay = pygame.Surface((V_WIDTH, V_HEIGHT), pygame.SRCALPHA)
-            overlay.fill((8, 5, 16, 180))
+            overlay.fill((8, 5, 16, 200))
             virtual_surface.blit(overlay, (0, 0))
             
-            title_glow = render_glowing_text("NEON SNAKE", font_title, (0, 255, 180), SNAKE_COLOR, glow_size=8)
-            y_bounce = int(10 * math.sin(current_ticks * 0.004))
-            virtual_surface.blit(title_glow, (V_WIDTH // 2 - title_glow.get_width() // 2, 180 + y_bounce))
+            title_glow = render_glowing_text("NEON SNAKE", font_title, (255, 255, 255), SNAKE_COLOR, glow_size=10)
+            y_bounce = int(8 * math.sin(current_ticks * 0.004))
+            virtual_surface.blit(title_glow, (V_WIDTH // 2 - title_glow.get_width() // 2, 120 + y_bounce))
             
+            # Subtitle
+            font_sub = pygame.font.SysFont("Helvetica", 30, bold=True)
+            draw_text_shadow(surface, "CYBERPUNK EDITION", font_sub, COLOR_SHIELD, 
+                           V_WIDTH // 4 - 140, 260)
+            # Actually draw on virtual_surface
+            sub_surf = font_sub.render("CYBERPUNK EDITION", True, COLOR_SHIELD)
+            sub_shadow = font_sub.render("CYBERPUNK EDITION", True, (0, 0, 0))
+            virtual_surface.blit(sub_shadow, (V_WIDTH // 2 - sub_surf.get_width() // 2 + 3, 243))
+            virtual_surface.blit(sub_surf, (V_WIDTH // 2 - sub_surf.get_width() // 2, 240))
+
             # Map Selection
-            map_lbl = font_btn.render("SELECT ARENA :  [1] OPEN  [2] PILLARS  [3] CROSS  [4] MAZE", True, COLOR_SHIELD)
+            map_lbl = font_btn.render("SELECT ARENA", True, (255, 255, 255))
+            map_shadow = font_btn.render("SELECT ARENA", True, (0, 0, 0))
+            virtual_surface.blit(map_shadow, (V_WIDTH // 2 - map_lbl.get_width() // 2 + 3, 323))
+            virtual_surface.blit(map_lbl, (V_WIDTH // 2 - map_lbl.get_width() // 2, 320))
+
             active_map_name = "OPEN"
             if selected_map == MAP_PILLARS: active_map_name = "PILLARS"
             elif selected_map == MAP_CROSS: active_map_name = "THE CROSS"
             elif selected_map == MAP_MAZE: active_map_name = "MAZE"
             
-            map_act = font_ui.render(f"ACTIVE MAP : {active_map_name}", True, COLOR_SPEED)
-            virtual_surface.blit(map_lbl, (V_WIDTH // 2 - map_lbl.get_width() // 2, 380))
-            virtual_surface.blit(map_act, (V_WIDTH // 2 - map_act.get_width() // 2, 420))
+            map_opt_font = pygame.font.SysFont("Helvetica", 24, bold=True)
+            map_opts = [
+                (f"[1] OPEN", COLOR_SHIELD),
+                (f"[2] PILLARS", COLOR_SPEED),
+                (f"[3] CROSS", COLOR_LASER),
+                (f"[4] MAZE", COLOR_SLOW),
+            ]
+            map_x = V_WIDTH // 2 - 350
+            for text, color in map_opts:
+                is_active = active_map_name in text
+                c = FOOD_COLOR if is_active else (120, 120, 140)
+                s = map_opt_font.render(text, True, c)
+                virtual_surface.blit(s, (map_x, 380))
+                map_x += s.get_width() + 40
 
-            # Controls
-            ctrl_1 = font_ui.render("STEER:  W A S D  or  ARROW KEYS", True, TEXT_COLOR)
-            ctrl_2 = font_ui.render("LASER:  SPACE  (fire plasma cannon)", True, COLOR_LASER)
-            ctrl_3 = font_ui.render("REWIND:  BACKSPACE  (on crash)", True, COLOR_REWIND)
-            ctrl_4 = font_ui.render("HELP:  H  (power-up reference)", True, (150, 150, 200))
-            virtual_surface.blit(ctrl_1, (V_WIDTH // 2 - ctrl_1.get_width() // 2, 480))
-            virtual_surface.blit(ctrl_2, (V_WIDTH // 2 - ctrl_2.get_width() // 2, 520))
-            virtual_surface.blit(ctrl_3, (V_WIDTH // 2 - ctrl_3.get_width() // 2, 560))
-            virtual_surface.blit(ctrl_4, (V_WIDTH // 2 - ctrl_4.get_width() // 2, 600))
+            active_lbl = font_ui.render(f"ACTIVE: {active_map_name}", True, FOOD_COLOR)
+            virtual_surface.blit(active_lbl, (V_WIDTH // 2 - active_lbl.get_width() // 2, 420))
+
+            # Controls section
+            font_ctrl = pygame.font.SysFont("Helvetica", 26, bold=True)
+            ctrl_title = font_btn.render("CONTROLS", True, (255, 255, 255))
+            ctrl_shadow = font_btn.render("CONTROLS", True, (0, 0, 0))
+            virtual_surface.blit(ctrl_shadow, (V_WIDTH // 2 - ctrl_title.get_width() // 2 + 3, 483))
+            virtual_surface.blit(ctrl_title, (V_WIDTH // 2 - ctrl_title.get_width() // 2, 480))
+
+            controls = [
+                ("W A S D / ARROWS", "Steer the snake", TEXT_COLOR),
+                ("SPACE", "Fire plasma laser", COLOR_LASER),
+                ("BACKSPACE", "Rewind time (on crash)", COLOR_REWIND),
+                ("H", "Help / Power-up guide", COLOR_GHOST),
+            ]
+            ctrl_x = V_WIDTH // 2 - 350
+            for key, desc, color in controls:
+                k = font_ctrl.render(key, True, FOOD_COLOR)
+                d = font_ctrl.render(desc, True, (180, 180, 190))
+                virtual_surface.blit(k, (ctrl_x, 540))
+                virtual_surface.blit(d, (ctrl_x + k.get_width() + 20, 540))
+                ctrl_x = max(ctrl_x, V_WIDTH // 2 - 350)
+                # Just stack vertically for clarity
+            # Redo controls vertically
+            cy = 540
+            for key, desc, color in controls:
+                k = font_ctrl.render(key, True, FOOD_COLOR)
+                d = font_ctrl.render(f"  {desc}", True, (180, 180, 190))
+                row = pygame.Surface((k.get_width() + d.get_width(), k.get_height()), pygame.SRCALPHA)
+                row.blit(k, (0, 0))
+                row.blit(d, (k.get_width(), 0))
+                virtual_surface.blit(row, (V_WIDTH // 2 - row.get_width() // 2, cy))
+                cy += 38
 
             # Power-up legend
-            font_legend = pygame.font.SysFont("Helvetica", 17)
-            legend_title = font_btn.render("POWER-UPS", True, COLOR_DOUBLE)
-            virtual_surface.blit(legend_title, (V_WIDTH // 2 - legend_title.get_width() // 2, 650))
+            font_legend_title = pygame.font.SysFont("Helvetica", 32, bold=True)
+            font_legend = pygame.font.SysFont("Helvetica", 22, bold=True)
+            font_legend_desc = pygame.font.SysFont("Helvetica", 20)
+            
+            legend_title = font_legend_title.render("POWER-UPS", True, (255, 255, 255))
+            lt_shadow = font_legend_title.render("POWER-UPS", True, (0, 0, 0))
+            virtual_surface.blit(lt_shadow, (V_WIDTH // 2 - legend_title.get_width() // 2 + 3, 723))
+            virtual_surface.blit(legend_title, (V_WIDTH // 2 - legend_title.get_width() // 2, 720))
             
             legend = [
-                ("SH  Shield", "Invincible + wall wrap", COLOR_SHIELD),
-                ("SP  Speed", "1.7x speed, 2x score", COLOR_SPEED),
-                ("SL  Slow-Mo", "Half speed to dodge", COLOR_SLOW),
-                ("SC  Scissors", "Cut 30% tail", COLOR_SHRINK),
-                ("LA  Plasma", "+3 ammo, SPACE to fire", COLOR_LASER),
-                ("RE  Rewind", "+1 time charge", COLOR_REWIND),
-                ("GH  Ghost", "Pass thru walls", COLOR_GHOST),
-                ("MG  Magnet", "Food follows you", COLOR_MAGNET),
-                ("2X  Double", "2x all score", COLOR_DOUBLE),
-                ("TS  Tail Guard", "No self-crash", COLOR_TAILSHIELD),
-                ("TP  Teleport", "Warp to safety", COLOR_TELEPORT),
+                ("SHIELD", "Invincible + wall wrap", COLOR_SHIELD),
+                ("SPEED", "1.7x speed, 2x score", COLOR_SPEED),
+                ("SLOW-MO", "Half speed to dodge", COLOR_SLOW),
+                ("SCISSORS", "Cut 30% tail", COLOR_SHRINK),
+                ("PLASMA", "+3 ammo, SPACE to fire", COLOR_LASER),
+                ("REWIND", "+1 time charge on crash", COLOR_REWIND),
+                ("GHOST", "Pass thru walls", COLOR_GHOST),
+                ("MAGNET", "Food follows you", COLOR_MAGNET),
+                ("2X SCORE", "Double all points", COLOR_DOUBLE),
+                ("TAIL GUARD", "No self-crash", COLOR_TAILSHIELD),
+                ("TELEPORT", "Warp to safety", COLOR_TELEPORT),
             ]
             
-            col1_x = 120
-            col2_x = V_WIDTH // 2 + 80
-            y_start = 700
+            col1_x = 100
+            col2_x = V_WIDTH // 2 + 60
+            y_start = 770
             for i, (name, desc, color) in enumerate(legend):
                 col_x = col1_x if i < 6 else col2_x
-                row_y = y_start + (i % 6) * 38
+                row_y = y_start + (i % 6) * 42
                 nm = font_legend.render(name, True, color)
-                ds = font_legend.render(f"- {desc}", True, (160, 160, 170))
+                ds = font_legend_desc.render(f"  {desc}", True, (180, 180, 190))
+                nm_shadow = font_legend.render(name, True, (0, 0, 0))
+                virtual_surface.blit(nm_shadow, (col_x + 2, row_y + 2))
                 virtual_surface.blit(nm, (col_x, row_y))
-                virtual_surface.blit(ds, (col_x + 180, row_y))
+                virtual_surface.blit(ds, (col_x + nm.get_width(), row_y + 2))
 
             # Start prompt
             blink_alpha = int(140 + 115 * math.sin(current_ticks * 0.007))
-            btn_surf = font_btn.render("PRESS [ ENTER ] OR [ SPACE ] TO PLAY", True, FOOD_COLOR)
+            btn_surf = font_btn.render("PRESS  ENTER  TO  PLAY", True, (255, 255, 255))
             btn_alpha_surf = pygame.Surface(btn_surf.get_size(), pygame.SRCALPHA)
             btn_alpha_surf.fill((255, 255, 255, blink_alpha))
             btn_surf.blit(btn_alpha_surf, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            btn_shadow = font_btn.render("PRESS  ENTER  TO  PLAY", True, (0, 0, 0))
+            virtual_surface.blit(btn_shadow, (V_WIDTH // 2 - btn_surf.get_width() // 2 + 4, V_HEIGHT - 76))
             virtual_surface.blit(btn_surf, (V_WIDTH // 2 - btn_surf.get_width() // 2, V_HEIGHT - 80))
 
         elif state == STATE_REWIND_PROMPT:
@@ -1525,12 +1585,17 @@ def main():
             overlay.fill((20, 8, 20, 200))
             virtual_surface.blit(overlay, (0, 0))
             
-            title_glow = render_glowing_text("CRASH DETECTED", font_title, COLOR_REWIND, (255, 0, 127), glow_size=8)
+            title_glow = render_glowing_text("CRASH DETECTED", font_title, (255, 255, 255), COLOR_REWIND, glow_size=10)
             virtual_surface.blit(title_glow, (V_WIDTH // 2 - title_glow.get_width() // 2, 300))
             
-            opt_r = font_btn.render("Press  [ BACKSPACE ]  to Rewind Time", True, COLOR_SPEED)
-            opt_q = font_ui.render(f"Press  [ Q ]  to skip and Game Over  (Time Charges Remaining: {rewind_charges})", True, TEXT_COLOR)
+            opt_r = font_btn.render("Press  BACKSPACE  to Rewind Time", True, COLOR_SPEED)
+            opt_r_shadow = font_btn.render("Press  BACKSPACE  to Rewind Time", True, (0, 0, 0))
+            virtual_surface.blit(opt_r_shadow, (V_WIDTH // 2 - opt_r.get_width() // 2 + 3, 543))
             virtual_surface.blit(opt_r, (V_WIDTH // 2 - opt_r.get_width() // 2, 540))
+            
+            opt_q = font_ui.render(f"Press  Q  to skip and Game Over  ({rewind_charges} charges remaining)", True, (200, 200, 210))
+            opt_q_shadow = font_ui.render(f"Press  Q  to skip and Game Over  ({rewind_charges} charges remaining)", True, (0, 0, 0))
+            virtual_surface.blit(opt_q_shadow, (V_WIDTH // 2 - opt_q.get_width() // 2 + 3, 623))
             virtual_surface.blit(opt_q, (V_WIDTH // 2 - opt_q.get_width() // 2, 620))
 
         elif state == STATE_REWINDING:
@@ -1547,25 +1612,37 @@ def main():
             # Rewinding indicator text
             blink = current_ticks // 150 % 2 == 0
             if blink:
-                lbl = font_btn.render("◀◀  REWINDING TIME", True, COLOR_REWIND)
+                lbl = font_btn.render("REWINDING TIME...", True, COLOR_REWIND)
+                lbl_shadow = font_btn.render("REWINDING TIME...", True, (0, 0, 0))
+                virtual_surface.blit(lbl_shadow, (52, V_HEIGHT - 78))
                 virtual_surface.blit(lbl, (50, V_HEIGHT - 80))
 
         elif state == STATE_GAMEOVER:
             overlay = pygame.Surface((V_WIDTH, V_HEIGHT), pygame.SRCALPHA)
-            overlay.fill((20, 5, 10, 210))
+            overlay.fill((20, 5, 10, 220))
             virtual_surface.blit(overlay, (0, 0))
             
-            go_glow = render_glowing_text("GAME OVER", font_title, FOOD_COLOR, COLOR_REWIND, glow_size=8)
+            go_glow = render_glowing_text("GAME OVER", font_title, (255, 255, 255), COLOR_REWIND, glow_size=10)
             virtual_surface.blit(go_glow, (V_WIDTH // 2 - go_glow.get_width() // 2, 280))
             
-            score_summary = font_btn.render(f"FINAL SCORE : {score}", True, TEXT_COLOR)
-            best_summary = font_btn.render(f"HIGH SCORE : {high_score}", True, (255, 215, 0))
+            score_summary = font_btn.render(f"FINAL SCORE: {score}", True, (255, 255, 255))
+            score_shadow = font_btn.render(f"FINAL SCORE: {score}", True, (0, 0, 0))
+            virtual_surface.blit(score_shadow, (V_WIDTH // 2 - score_summary.get_width() // 2 + 3, 453))
             virtual_surface.blit(score_summary, (V_WIDTH // 2 - score_summary.get_width() // 2, 450))
+            
+            best_summary = font_btn.render(f"HIGH SCORE: {high_score}", True, COLOR_DOUBLE)
+            best_shadow = font_btn.render(f"HIGH SCORE: {high_score}", True, (0, 0, 0))
+            virtual_surface.blit(best_shadow, (V_WIDTH // 2 - best_summary.get_width() // 2 + 3, 513))
             virtual_surface.blit(best_summary, (V_WIDTH // 2 - best_summary.get_width() // 2, 510))
             
-            act_r = font_btn.render("Press  [ R ]  to Play Again", True, SNAKE_COLOR)
-            act_q = font_ui.render("Press  [ Q ]  to Quit Game", True, (160, 160, 180))
+            act_r = font_btn.render("Press  R  to Play Again", True, (255, 255, 255))
+            act_r_shadow = font_btn.render("Press  R  to Play Again", True, (0, 0, 0))
+            virtual_surface.blit(act_r_shadow, (V_WIDTH // 2 - act_r.get_width() // 2 + 3, 663))
             virtual_surface.blit(act_r, (V_WIDTH // 2 - act_r.get_width() // 2, 660))
+            
+            act_q = font_ui.render("Press  Q  to Quit", True, (180, 180, 190))
+            act_q_shadow = font_ui.render("Press  Q  to Quit", True, (0, 0, 0))
+            virtual_surface.blit(act_q_shadow, (V_WIDTH // 2 - act_q.get_width() // 2 + 3, 733))
             virtual_surface.blit(act_q, (V_WIDTH // 2 - act_q.get_width() // 2, 730))
 
         # --- Supersampling Downscale (Anti-aliased rendering) ---
